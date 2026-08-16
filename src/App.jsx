@@ -1,9 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw } from "lucide-react";
-import { db } from "./firebase";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-
-const jobsDocRef = doc(db, "board", "jobs");
 
 const PAPER = "#F3EFE4";
 const NAVY = "#1E3A5F";
@@ -129,26 +125,24 @@ export default function InstallBoard() {
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      jobsDocRef,
-      (snap) => {
-        setJobs(snap.exists() ? snap.data().jobs || [] : []);
-        setError("");
-        setLoaded(true);
-      },
-      (e) => {
-        setError("데이터를 불러오지 못했습니다. Firebase 설정을 확인해 주세요.");
+    (async () => {
+      try {
+        const res = await window.storage.get("jobs-data", true);
+        if (res && res.value) setJobs(JSON.parse(res.value));
+      } catch (e) {
+        setJobs([]);
+      } finally {
         setLoaded(true);
       }
-    );
-    return () => unsub();
+    })();
   }, []);
 
   const persist = useCallback(async (next) => {
     setSaving(true);
     try {
-      await setDoc(jobsDocRef, { jobs: next, updatedAt: Date.now() });
-      setError("");
+      const res = await window.storage.set("jobs-data", JSON.stringify(next), true);
+      if (!res) setError("저장에 실패했습니다. 다시 시도해 주세요.");
+      else setError("");
     } catch (e) {
       setError("저장 중 오류가 발생했습니다.");
     } finally {
@@ -420,7 +414,7 @@ export default function InstallBoard() {
                       >
                         {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
                         <br />
-                        <span style={{ fontWeight: 500 }}>{j.installTech || "기사미배정"}</span>
+                        <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
                       </div>
                     ))}
                   </div>
