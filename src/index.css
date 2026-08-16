@@ -25,3 +25,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', system-u
 .mt-2 { margin-top: 8px; }
 .mt-3 { margin-top: 12px; }
 .mt-4 { margin-top: 16px; }
+
+@media (max-width: 480px) {
+  .grid-cols-2, .grid-cols-3 { grid-template-columns: 1fr; }
+  .board-root { padding: 8px !important; }
+  .board-header { padding: 10px 12px !important; }
+  .board-title { font-size: 17px !important; }
+  .cal-cell { min-height: 44px !important; padding: 3px 4px !important; }
+  .install-tag-full { display: none !important; }
+  .install-tag-compact { display: block !important; }
+}
+
+.install-tag-compact { display: none; }
