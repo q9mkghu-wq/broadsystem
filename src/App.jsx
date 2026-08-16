@@ -247,6 +247,7 @@ export default function InstallBoard() {
 
   return (
     <div
+      className="board-root"
       style={{
         background: PAPER,
         backgroundImage: `linear-gradient(${GRID_LINE} 1px, transparent 1px), linear-gradient(90deg, ${GRID_LINE} 1px, transparent 1px)`,
@@ -257,7 +258,20 @@ export default function InstallBoard() {
         padding: 16,
       }}
     >
+      <style>{`
+        @media (max-width: 480px) {
+          .grid-cols-2, .grid-cols-3 { grid-template-columns: 1fr !important; }
+          .board-root { padding: 8px !important; }
+          .board-header { padding: 10px 12px !important; }
+          .board-title { font-size: 17px !important; }
+          .cal-cell { min-height: 44px !important; padding: 3px 4px !important; }
+          .install-tag-full { display: none !important; }
+          .install-tag-compact { display: block !important; }
+        }
+        .install-tag-compact { display: none; }
+      `}</style>
       <div
+        className="board-header"
         style={{
           border: `2px solid ${NAVY}`,
           borderRadius: 4,
@@ -272,7 +286,7 @@ export default function InstallBoard() {
             <div style={{ fontSize: 11, letterSpacing: "0.12em", color: NAVY_LIGHT, fontWeight: 800 }}>
               행거 시스템장 설치 관리
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: NAVY }}>설치일정 통합보드</div>
+            <div className="board-title" style={{ fontSize: 20, fontWeight: 800, color: NAVY }}>설치일정 통합보드</div>
           </div>
           <div className="flex items-center gap-2">
             {saving && <span style={{ fontSize: 12, color: GRAY }}>저장 중…</span>}
@@ -386,6 +400,7 @@ export default function InstallBoard() {
             return (
               <div
                 key={idx}
+                className="cal-cell"
                 onClick={() => setSelectedDate(key)}
                 style={{
                   position: "relative",
@@ -404,30 +419,47 @@ export default function InstallBoard() {
                   {d.getDate()}
                 </div>
                 {ev && ev.install.length > 0 && (
-                  <div className="flex flex-col gap-0.5 mt-1">
-                    {ev.install.map((j) => (
-                      <div
-                        key={j.id}
-                        style={{
-                          fontSize: 9,
-                          lineHeight: 1.3,
-                          background: "#FCEEDF",
-                          color: "#B15A16",
-                          borderRadius: 3,
-                          padding: "1px 3px",
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                        title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
-                      >
-                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
-                        <br />
-                        <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="install-tag-full flex flex-col gap-0.5 mt-1">
+                      {ev.install.map((j) => (
+                        <div
+                          key={j.id}
+                          style={{
+                            fontSize: 9,
+                            lineHeight: 1.3,
+                            background: "#FCEEDF",
+                            color: "#B15A16",
+                            borderRadius: 3,
+                            padding: "1px 3px",
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
+                        >
+                          {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
+                          <br />
+                          <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="install-tag-compact"
+                      style={{
+                        marginTop: 4,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        background: "#FCEEDF",
+                        color: "#B15A16",
+                        borderRadius: 3,
+                        padding: "1px 4px",
+                        textAlign: "center",
+                      }}
+                    >
+                      설치 {ev.install.length}건
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -540,9 +572,10 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
-        padding: "24px 12px",
+        padding: "24px 10px",
         zIndex: 50,
         overflowY: "auto",
+        boxSizing: "border-box",
       }}
       onClick={onClose}
     >
@@ -554,7 +587,8 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           borderRadius: 6,
           width: "100%",
           maxWidth: 480,
-          padding: 18,
+          padding: 16,
+          boxSizing: "border-box",
         }}
       >
         <div className="flex items-center justify-between mb-3">
