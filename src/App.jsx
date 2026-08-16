@@ -124,18 +124,30 @@ export default function InstallBoard() {
   const [techFilter, setTechFilter] = useState("전체");
   const [confirmReset, setConfirmReset] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("jobs-data", true);
-        if (res && res.value) setJobs(JSON.parse(res.value));
-      } catch (e) {
+  const loadJobs = useCallback(async () => {
+    setError("");
+    try {
+      const listRes = await window.storage.list("jobs-data", true);
+      const exists = listRes && Array.isArray(listRes.keys) && listRes.keys.includes("jobs-data");
+      if (!exists) {
         setJobs([]);
-      } finally {
         setLoaded(true);
+        return;
       }
-    })();
+      const res = await window.storage.get("jobs-data", true);
+      setJobs(res && res.value ? JSON.parse(res.value) : []);
+      setLoaded(true);
+    } catch (e) {
+      // Do NOT clear jobs here — a failed fetch must never look like an empty board,
+      // since that would let a subsequent save overwrite real data with nothing.
+      setError("저장된 데이터를 불러오지 못했습니다. 아래 버튼으로 다시 시도해 주세요.");
+      setLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   const persist = useCallback(async (next) => {
     setSaving(true);
@@ -272,19 +284,20 @@ export default function InstallBoard() {
           <div className="flex items-center gap-2">
             {saving && <span style={{ fontSize: 12, color: GRAY }}>저장 중…</span>}
             <button
-              onClick={() => setEditingJob(emptyJob(selectedDate))}
+              onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
+              disabled={!!error}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                background: ORANGE,
+                background: error ? GRAY : ORANGE,
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
                 padding: "9px 14px",
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: error ? "not-allowed" : "pointer",
               }}
             >
               <Plus size={16} /> 새 주문 등록
@@ -305,8 +318,14 @@ export default function InstallBoard() {
       </div>
 
       {error && (
-        <div style={{ background: "#FCEBEB", color: "#791F1F", border: "1px solid #F09595", borderRadius: 6, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
-          {error}
+        <div style={{ background: "#FCEBEB", color: "#791F1F", border: "1px solid #F09595", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <span>{error}</span>
+          <button
+            onClick={loadJobs}
+            style={{ fontSize: 12, fontWeight: 700, color: "#791F1F", background: "#fff", border: "1px solid #F09595", borderRadius: 5, padding: "5px 10px", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            다시 불러오기
+          </button>
         </div>
       )}
 
@@ -437,8 +456,9 @@ export default function InstallBoard() {
             {fmtDate(selectedDate)} 일정 ({dayJobsForSelected.length}건)
           </div>
           <button
-            onClick={() => setEditingJob(emptyJob(selectedDate))}
-            style={{ fontSize: 12, color: NAVY_LIGHT, background: "transparent", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 5, padding: "4px 9px", cursor: "pointer" }}
+            onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
+            disabled={!!error}
+            style={{ fontSize: 12, color: error ? GRAY : NAVY_LIGHT, background: "transparent", border: `1px solid ${error ? GRAY : NAVY_LIGHT}`, borderRadius: 5, padding: "4px 9px", cursor: error ? "not-allowed" : "pointer" }}
           >
             + 이 날짜에 등록
           </button>
