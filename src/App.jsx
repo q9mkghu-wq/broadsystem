@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw } from "lucide-react";
+import { db } from "./firebase";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+
+const jobsDocRef = doc(db, "board", "jobs");
 
 const PAPER = "#F3EFE4";
 const NAVY = "#1E3A5F";
@@ -124,37 +128,28 @@ export default function InstallBoard() {
   const [techFilter, setTechFilter] = useState("전체");
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const loadJobs = useCallback(async () => {
-    setError("");
-    try {
-      const listRes = await window.storage.list("jobs-data", true);
-      const exists = listRes && Array.isArray(listRes.keys) && listRes.keys.includes("jobs-data");
-      if (!exists) {
-        setJobs([]);
-        setLoaded(true);
-        return;
-      }
-      const res = await window.storage.get("jobs-data", true);
-      setJobs(res && res.value ? JSON.parse(res.value) : []);
-      setLoaded(true);
-    } catch (e) {
-      // Do NOT clear jobs here — a failed fetch must never look like an empty board,
-      // since that would let a subsequent save overwrite real data with nothing.
-      setError("저장된 데이터를 불러오지 못했습니다. 아래 버튼으로 다시 시도해 주세요.");
-      setLoaded(true);
-    }
-  }, []);
-
   useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
+    const unsub = onSnapshot(
+      jobsDocRef,
+      (snap) => {
+        setJobs(snap.exists() ? snap.data().jobs || [] : []);
+        setError("");
+        setLoaded(true);
+      },
+      (e) => {
+        const detail = e && (e.code || e.message) ? ` (${e.code || ""} ${e.message || ""})` : "";
+        setError("데이터를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요." + detail);
+        setLoaded(true);
+      }
+    );
+    return () => unsub();
+  }, []);
 
   const persist = useCallback(async (next) => {
     setSaving(true);
     try {
-      const res = await window.storage.set("jobs-data", JSON.stringify(next), true);
-      if (!res) setError("저장에 실패했습니다. 다시 시도해 주세요.");
-      else setError("");
+      await setDoc(jobsDocRef, { jobs: next, updatedAt: Date.now() });
+      setError("");
     } catch (e) {
       setError("저장 중 오류가 발생했습니다.");
     } finally {
@@ -201,7 +196,6 @@ export default function InstallBoard() {
     return jobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
   }, [jobs, techFilter]);
 
-  // events per date: {orderDate, measureDate, installDate}
   const eventsByDate = useMemo(() => {
     const map = {};
     visibleJobs.forEach((j) => {
@@ -324,7 +318,7 @@ export default function InstallBoard() {
         <div style={{ background: "#FCEBEB", color: "#791F1F", border: "1px solid #F09595", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <span>{error}</span>
           <button
-            onClick={loadJobs}
+            onClick={() => window.location.reload()}
             style={{ fontSize: 12, fontWeight: 700, color: "#791F1F", background: "#fff", border: "1px solid #F09595", borderRadius: 5, padding: "5px 10px", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             다시 불러오기
@@ -332,7 +326,6 @@ export default function InstallBoard() {
         </div>
       )}
 
-      {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span style={{ fontSize: 12, color: GRAY, fontWeight: 700 }}>담당기사</span>
         <button
@@ -368,7 +361,6 @@ export default function InstallBoard() {
         ))}
       </div>
 
-      {/* Calendar */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} style={{ border: "none", background: "transparent", cursor: "pointer", color: NAVY }}>
@@ -453,7 +445,6 @@ export default function InstallBoard() {
         </div>
       </div>
 
-      {/* Day detail */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
