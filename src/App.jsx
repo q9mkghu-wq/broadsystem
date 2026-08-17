@@ -1,9 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw } from "lucide-react";
-import { db } from "./firebase";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-
-const jobsDocRef = doc(db, "board", "jobs");
 
 const PAPER = "#F3EFE4";
 const NAVY = "#1E3A5F";
@@ -128,28 +124,37 @@ export default function InstallBoard() {
   const [techFilter, setTechFilter] = useState("전체");
   const [confirmReset, setConfirmReset] = useState(false);
 
-  useEffect(() => {
-    const unsub = onSnapshot(
-      jobsDocRef,
-      (snap) => {
-        setJobs(snap.exists() ? snap.data().jobs || [] : []);
-        setError("");
+  const loadJobs = useCallback(async () => {
+    setError("");
+    try {
+      const listRes = await window.storage.list("jobs-data", true);
+      const exists = listRes && Array.isArray(listRes.keys) && listRes.keys.includes("jobs-data");
+      if (!exists) {
+        setJobs([]);
         setLoaded(true);
-      },
-      (e) => {
-        const detail = e && (e.code || e.message) ? ` (${e.code || ""} ${e.message || ""})` : "";
-        setError("데이터를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요." + detail);
-        setLoaded(true);
+        return;
       }
-    );
-    return () => unsub();
+      const res = await window.storage.get("jobs-data", true);
+      setJobs(res && res.value ? JSON.parse(res.value) : []);
+      setLoaded(true);
+    } catch (e) {
+      // Do NOT clear jobs here — a failed fetch must never look like an empty board,
+      // since that would let a subsequent save overwrite real data with nothing.
+      setError("저장된 데이터를 불러오지 못했습니다. 아래 버튼으로 다시 시도해 주세요.");
+      setLoaded(true);
+    }
   }, []);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   const persist = useCallback(async (next) => {
     setSaving(true);
     try {
-      await setDoc(jobsDocRef, { jobs: next, updatedAt: Date.now() });
-      setError("");
+      const res = await window.storage.set("jobs-data", JSON.stringify(next), true);
+      if (!res) setError("저장에 실패했습니다. 다시 시도해 주세요.");
+      else setError("");
     } catch (e) {
       setError("저장 중 오류가 발생했습니다.");
     } finally {
@@ -196,6 +201,7 @@ export default function InstallBoard() {
     return jobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
   }, [jobs, techFilter]);
 
+  // events per date: {orderDate, measureDate, installDate}
   const eventsByDate = useMemo(() => {
     const map = {};
     visibleJobs.forEach((j) => {
@@ -253,23 +259,13 @@ export default function InstallBoard() {
         backgroundImage: `linear-gradient(${GRID_LINE} 1px, transparent 1px), linear-gradient(90deg, ${GRID_LINE} 1px, transparent 1px)`,
         backgroundSize: "24px 24px",
         minHeight: "100vh",
+        minWidth: 900,
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Malgun Gothic', system-ui, sans-serif",
         color: INK,
         padding: 16,
       }}
     >
-      <style>{`
-        @media (max-width: 480px) {
-          .grid-cols-2, .grid-cols-3 { grid-template-columns: 1fr !important; }
-          .board-root { padding: 8px !important; }
-          .board-header { padding: 10px 12px !important; }
-          .board-title { font-size: 17px !important; }
-          .cal-cell { min-height: 44px !important; padding: 3px 4px !important; }
-          .install-tag-full { display: none !important; }
-          .install-tag-compact { display: block !important; }
-        }
-        .install-tag-compact { display: none; }
-      `}</style>
+      {/* Header / title block */}
       <div
         className="board-header"
         style={{
@@ -328,7 +324,7 @@ export default function InstallBoard() {
         <div style={{ background: "#FCEBEB", color: "#791F1F", border: "1px solid #F09595", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <span>{error}</span>
           <button
-            onClick={() => window.location.reload()}
+            onClick={loadJobs}
             style={{ fontSize: 12, fontWeight: 700, color: "#791F1F", background: "#fff", border: "1px solid #F09595", borderRadius: 5, padding: "5px 10px", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             다시 불러오기
@@ -336,6 +332,7 @@ export default function InstallBoard() {
         </div>
       )}
 
+      {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span style={{ fontSize: 12, color: GRAY, fontWeight: 700 }}>담당기사</span>
         <button
@@ -371,6 +368,7 @@ export default function InstallBoard() {
         ))}
       </div>
 
+      {/* Calendar */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} style={{ border: "none", background: "transparent", cursor: "pointer", color: NAVY }}>
@@ -419,47 +417,30 @@ export default function InstallBoard() {
                   {d.getDate()}
                 </div>
                 {ev && ev.install.length > 0 && (
-                  <>
-                    <div className="install-tag-full flex flex-col gap-0.5 mt-1">
-                      {ev.install.map((j) => (
-                        <div
-                          key={j.id}
-                          style={{
-                            fontSize: 9,
-                            lineHeight: 1.3,
-                            background: "#FCEEDF",
-                            color: "#B15A16",
-                            borderRadius: 3,
-                            padding: "1px 3px",
-                            fontWeight: 700,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                          title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
-                        >
-                          {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
-                          <br />
-                          <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div
-                      className="install-tag-compact"
-                      style={{
-                        marginTop: 4,
-                        fontSize: 10,
-                        fontWeight: 800,
-                        background: "#FCEEDF",
-                        color: "#B15A16",
-                        borderRadius: 3,
-                        padding: "1px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      설치 {ev.install.length}건
-                    </div>
-                  </>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    {ev.install.map((j) => (
+                      <div
+                        key={j.id}
+                        style={{
+                          fontSize: 9,
+                          lineHeight: 1.3,
+                          background: "#FCEEDF",
+                          color: "#B15A16",
+                          borderRadius: 3,
+                          padding: "1px 3px",
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
+                      >
+                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
+                        <br />
+                        <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             );
@@ -472,6 +453,7 @@ export default function InstallBoard() {
         </div>
       </div>
 
+      {/* Day detail */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
