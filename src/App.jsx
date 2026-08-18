@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw, Phone, LogOut, UserPlus } from "lucide-react";
 import { db, auth } from "./firebase";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, collection, query, where } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 function toEmail(username) {
@@ -135,6 +135,7 @@ export default function InstallBoard() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [techPhones, setTechPhones] = useState({});
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
+  const [techAccounts, setTechAccounts] = useState([]);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState("");
@@ -196,6 +197,22 @@ export default function InstallBoard() {
     return () => unsub();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      setTechAccounts([]);
+      return;
+    }
+    const q = query(collection(db, "users"), where("role", "==", "기사"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setTechAccounts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+      () => setTechAccounts([])
+    );
+    return () => unsub();
+  }, [user]);
+
   const persist = useCallback(async (next) => {
     setSaving(true);
     try {
@@ -250,6 +267,10 @@ export default function InstallBoard() {
     });
     return Array.from(set).filter(Boolean).sort();
   }, [jobs]);
+
+  const registeredTechNames = useMemo(() => {
+    return Array.from(new Set(techAccounts.map((a) => a.name).filter(Boolean))).sort();
+  }, [techAccounts]);
 
   const visibleJobs = useMemo(() => {
     if (techFilter === "전체") return jobs;
@@ -626,13 +647,13 @@ export default function InstallBoard() {
           onClose={() => setEditingJob(null)}
           onSave={saveJob}
           onDelete={jobs.some((j) => j.id === editingJob.id) ? () => deleteJob(editingJob.id) : null}
-          technicians={technicians}
+          technicians={registeredTechNames}
         />
       )}
 
       {phoneModalOpen && (
         <PhoneBookModal
-          technicians={technicians}
+          technicians={registeredTechNames}
           phones={techPhones}
           onClose={() => setPhoneModalOpen(false)}
           onSave={savePhones}
@@ -706,7 +727,12 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             <input type="date" style={inputStyle} value={form.measureDate} onChange={set("measureDate")} />
           </Field>
           <Field label="실측 담당기사" icon={<User size={12} />}>
-            <input style={inputStyle} list="tech-list" value={form.measureTech} onChange={set("measureTech")} placeholder="이름 입력" />
+            <select style={inputStyle} value={form.measureTech} onChange={set("measureTech")}>
+              <option value="">선택 안 함</option>
+              {technicians.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </Field>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -756,18 +782,17 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             <input type="date" style={inputStyle} value={form.installDate} onChange={set("installDate")} />
           </Field>
           <Field label="설치 담당기사" icon={<Truck size={12} />}>
-            <input style={inputStyle} list="tech-list" value={form.installTech} onChange={set("installTech")} placeholder="이름 입력" />
+            <select style={inputStyle} value={form.installTech} onChange={set("installTech")}>
+              <option value="">선택 안 함</option>
+              {technicians.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </Field>
         </div>
         <Field label="비고" icon={<StickyNote size={12} />}>
           <textarea style={{ ...inputStyle, minHeight: 48, resize: "vertical" }} value={form.memo} onChange={set("memo")} placeholder="특이사항" />
         </Field>
-
-        <datalist id="tech-list">
-          {technicians.map((t) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
 
         <div className="flex items-center justify-between mt-4">
           <div>
@@ -846,7 +871,7 @@ function PhoneBookModal({ technicians, phones, onClose, onSave }) {
 
         {technicians.length === 0 && (
           <div style={{ fontSize: 13, color: GRAY, padding: "12px 4px" }}>
-            등록된 기사님이 없습니다. 주문에 실측/설치 담당기사를 먼저 입력해 주세요.
+            등록된 기사 계정이 없습니다. "계정 만들기"에서 기사 계정을 먼저 생성해 주세요.
           </div>
         )}
 
