@@ -1270,7 +1270,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
 
       {lightboxSrc && (
         <div
-          onClick={() => setLightboxSrc(null)}
+          onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }}
           style={{
             position: "fixed",
             inset: 0,
@@ -1284,7 +1284,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           }}
         >
           <div
-            onClick={() => setLightboxSrc(null)}
+            onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }}
             style={{
               position: "fixed",
               top: 16,
