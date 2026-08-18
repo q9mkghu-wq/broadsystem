@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw } from "lucide-react";
-import { db } from "./firebase";
+import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw, Phone, LogOut, UserPlus } from "lucide-react";
+import { db, auth } from "./firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+
+function toEmail(username) {
+  return `${String(username || "").trim().toLowerCase()}@broadsystem.local`;
+}
 
 const jobsDocRef = doc(db, "board", "jobs");
+const techDocRef = doc(db, "board", "technicians");
 
 const PAPER = "#F3EFE4";
 const NAVY = "#1E3A5F";
@@ -127,8 +133,42 @@ export default function InstallBoard() {
   const [editingJob, setEditingJob] = useState(null);
   const [techFilter, setTechFilter] = useState("전체");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [techPhones, setTechPhones] = useState({});
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async (username, password) => {
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      await signInWithEmailAndPassword(auth, toEmail(username), password);
+    } catch (e) {
+      setLoginError("아이디 또는 비밀번호가 올바르지 않습니다.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  useEffect(() => {
+    if (!user) {
+      setJobs([]);
+      setLoaded(false);
+      return;
+    }
     const unsub = onSnapshot(
       jobsDocRef,
       (snap) => {
@@ -143,7 +183,18 @@ export default function InstallBoard() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setTechPhones({});
+      return;
+    }
+    const unsub = onSnapshot(techDocRef, (snap) => {
+      setTechPhones(snap.exists() ? snap.data().phones || {} : {});
+    });
+    return () => unsub();
+  }, [user]);
 
   const persist = useCallback(async (next) => {
     setSaving(true);
@@ -182,6 +233,15 @@ export default function InstallBoard() {
     setConfirmReset(false);
   };
 
+  const savePhones = async (nextPhones) => {
+    setTechPhones(nextPhones);
+    try {
+      await setDoc(techDocRef, { phones: nextPhones, updatedAt: Date.now() });
+    } catch (e) {
+      setError("연락처 저장 중 오류가 발생했습니다.");
+    }
+  };
+
   const technicians = useMemo(() => {
     const set = new Set();
     jobs.forEach((j) => {
@@ -196,6 +256,7 @@ export default function InstallBoard() {
     return jobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
   }, [jobs, techFilter]);
 
+  // events per date: {orderDate, measureDate, installDate}
   const eventsByDate = useMemo(() => {
     const map = {};
     visibleJobs.forEach((j) => {
@@ -245,6 +306,18 @@ export default function InstallBoard() {
     return { measureToday, installToday, waitingProd };
   }, [jobs]);
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: PAPER, color: GRAY, fontSize: 13 }}>
+        불러오는 중…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
+  }
+
   return (
     <div
       className="board-root"
@@ -280,6 +353,18 @@ export default function InstallBoard() {
           </div>
           <div className="flex items-center gap-2">
             {saving && <span style={{ fontSize: 12, color: GRAY }}>저장 중…</span>}
+            <button
+              onClick={() => setCreateAccountOpen(true)}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: NAVY_LIGHT, background: "#fff", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 6, padding: "8px 10px", cursor: "pointer" }}
+            >
+              <UserPlus size={14} /> 계정 만들기
+            </button>
+            <button
+              onClick={handleLogout}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: GRAY, background: "#fff", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "8px 10px", cursor: "pointer" }}
+            >
+              <LogOut size={14} /> 로그아웃
+            </button>
             <button
               onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
               disabled={!!error}
@@ -326,6 +411,7 @@ export default function InstallBoard() {
         </div>
       )}
 
+      {/* Filter row */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span style={{ fontSize: 12, color: GRAY, fontWeight: 700 }}>담당기사</span>
         <button
@@ -359,8 +445,26 @@ export default function InstallBoard() {
             {t}
           </button>
         ))}
+        <button
+          onClick={() => setPhoneModalOpen(true)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 12,
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: `1px solid ${NAVY_LIGHT}`,
+            background: "#fff",
+            color: NAVY_LIGHT,
+            cursor: "pointer",
+          }}
+        >
+          <Phone size={12} /> 연락처 관리
+        </button>
       </div>
 
+      {/* Calendar */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} style={{ border: "none", background: "transparent", cursor: "pointer", color: NAVY }}>
@@ -427,7 +531,7 @@ export default function InstallBoard() {
                         }}
                         title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
                       >
-                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}({j.productionStatus})
+                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
                         <br />
                         <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
                       </div>
@@ -445,6 +549,7 @@ export default function InstallBoard() {
         </div>
       </div>
 
+      {/* Day detail */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
@@ -524,6 +629,17 @@ export default function InstallBoard() {
           technicians={technicians}
         />
       )}
+
+      {phoneModalOpen && (
+        <PhoneBookModal
+          technicians={technicians}
+          phones={techPhones}
+          onClose={() => setPhoneModalOpen(false)}
+          onSave={savePhones}
+        />
+      )}
+
+      {createAccountOpen && <CreateAccountModal onClose={() => setCreateAccountOpen(false)} />}
     </div>
   );
 }
@@ -672,6 +788,283 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
               저장
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhoneBookModal({ technicians, phones, onClose, onSave }) {
+  const [draft, setDraft] = useState(() => ({ ...phones }));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(draft);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(30,58,95,0.35)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "24px 10px",
+        zIndex: 50,
+        overflowY: "auto",
+        boxSizing: "border-box",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#FBF9F3",
+          border: `2px solid ${NAVY}`,
+          borderRadius: 6,
+          width: "100%",
+          maxWidth: 420,
+          padding: 16,
+          boxSizing: "border-box",
+        }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>기사 연락처 관리</div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: GRAY }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ fontSize: 12, color: GRAY, marginBottom: 12 }}>
+          설치일 하루 전날 아침 9시에 문자로 설치 안내를 자동 발송하려면, 여기에 각 기사님의 휴대폰 번호를 등록해 주세요.
+        </div>
+
+        {technicians.length === 0 && (
+          <div style={{ fontSize: 13, color: GRAY, padding: "12px 4px" }}>
+            등록된 기사님이 없습니다. 주문에 실측/설치 담당기사를 먼저 입력해 주세요.
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          {technicians.map((t) => (
+            <div key={t}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 4 }}>{t}</div>
+              <input
+                style={inputStyle}
+                value={draft[t] || ""}
+                onChange={(e) => setDraft((d) => ({ ...d, [t]: e.target.value }))}
+                placeholder="01012345678 (- 없이 숫자만)"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: saving ? "not-allowed" : "pointer" }}
+          >
+            {saving ? "저장 중…" : "저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, error, loading }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = () => {
+    if (!username.trim() || !password) return;
+    onLogin(username, password);
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: PAPER,
+        backgroundImage: `linear-gradient(${GRID_LINE} 1px, transparent 1px), linear-gradient(90deg, ${GRID_LINE} 1px, transparent 1px)`,
+        backgroundSize: "24px 24px",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Malgun Gothic', system-ui, sans-serif",
+        padding: 16,
+      }}
+    >
+      <div style={{ background: "#FBF9F3", border: `2px solid ${NAVY}`, borderRadius: 6, padding: 28, width: "100%", maxWidth: 340, boxSizing: "border-box" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.12em", color: NAVY_LIGHT, fontWeight: 800 }}>
+          행거 시스템장 설치 관리
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: NAVY, marginBottom: 18 }}>로그인</div>
+
+        <Field label="아이디" icon={<User size={12} />}>
+          <input
+            style={inputStyle}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+        </Field>
+        <Field label="비밀번호">
+          <input
+            type="password"
+            style={inputStyle}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+          />
+        </Field>
+
+        {error && <div style={{ color: "#791F1F", fontSize: 12, marginBottom: 10 }}>{error}</div>}
+
+        <button
+          onClick={submit}
+          disabled={loading}
+          style={{
+            width: "100%",
+            background: ORANGE,
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "10px 0",
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: loading ? "not-allowed" : "pointer",
+            marginTop: 6,
+          }}
+        >
+          {loading ? "로그인 중…" : "로그인"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CreateAccountModal({ onClose }) {
+  const [form, setForm] = useState({ username: "", password: "", name: "", role: "기사" });
+  const [adminPassword, setAdminPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async () => {
+    if (!form.username.trim() || !form.password) {
+      setStatus("아이디와 비밀번호를 입력해 주세요.");
+      return;
+    }
+    setBusy(true);
+    setStatus("");
+    try {
+      const res = await fetch("/api/create-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, adminPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "계정 생성에 실패했습니다.");
+      setStatus(`"${form.username}" 계정이 생성되었습니다.`);
+      setForm({ username: "", password: "", name: "", role: "기사" });
+    } catch (e) {
+      setStatus(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(30,58,95,0.35)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "24px 10px",
+        zIndex: 50,
+        overflowY: "auto",
+        boxSizing: "border-box",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#FBF9F3",
+          border: `2px solid ${NAVY}`,
+          borderRadius: 6,
+          width: "100%",
+          maxWidth: 420,
+          padding: 16,
+          boxSizing: "border-box",
+        }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>새 계정 만들기</div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: GRAY }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <Field label="이름" icon={<User size={12} />}>
+          <input style={inputStyle} value={form.name} onChange={set("name")} placeholder="예: 윤형진" />
+        </Field>
+        <Field label="아이디" icon={<User size={12} />}>
+          <input style={inputStyle} value={form.username} onChange={set("username")} placeholder="영문/숫자 (예: yhj01)" autoCapitalize="off" />
+        </Field>
+        <Field label="초기 비밀번호" icon={<User size={12} />}>
+          <input style={inputStyle} value={form.password} onChange={set("password")} placeholder="6자 이상" />
+        </Field>
+        <Field label="구분" icon={<User size={12} />}>
+          <div className="flex gap-2">
+            {["기사", "사무실"].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, role: r }))}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "7px 0",
+                  borderRadius: 5,
+                  border: `1px solid ${form.role === r ? NAVY : GRID_LINE}`,
+                  background: form.role === r ? NAVY : "#fff",
+                  color: form.role === r ? "#fff" : INK,
+                  cursor: "pointer",
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="관리자 비밀번호" icon={<User size={12} />}>
+          <input type="password" style={inputStyle} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="새 계정 발급 권한 확인용" />
+        </Field>
+
+        {status && <div style={{ fontSize: 12, color: status.includes("생성되었습니다") ? GREEN : "#791F1F", marginBottom: 8 }}>{status}</div>}
+
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={submit}
+            disabled={busy}
+            style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: busy ? "not-allowed" : "pointer" }}
+          >
+            {busy ? "생성 중…" : "계정 생성"}
+          </button>
         </div>
       </div>
     </div>
