@@ -856,6 +856,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const [drawingStatus, setDrawingStatus] = useState("");
   const [drawingBusy, setDrawingBusy] = useState(false);
   const [surveyRooms, setSurveyRooms] = useState(null); // null = loading, [] = none found, array = found
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const fileInputRef = useRef(null);
   const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -1084,7 +1085,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
                     <img
                       src={d.dataUrl}
                       alt={d.label}
-                      onClick={() => window.open(d.dataUrl, "_blank")}
+                      onClick={() => setLightboxSrc(d.dataUrl)}
                       style={{ width: 76, height: 62, objectFit: "contain", background: "#fff", border: `1px solid ${GRID_LINE}`, borderRadius: 6, cursor: "zoom-in" }}
                     />
                     <div style={{ fontSize: 9.5, color: GRAY, textAlign: "center", marginTop: 2 }}>{d.label}</div>
@@ -1106,7 +1107,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
               <img
                 src={src}
                 alt=""
-                onClick={() => window.open(src, "_blank")}
+                onClick={() => setLightboxSrc(src)}
                 style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
               />
               <div
@@ -1157,7 +1158,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
               <img
                 src={src}
                 alt=""
-                onClick={() => window.open(src, "_blank")}
+                onClick={() => setLightboxSrc(src)}
                 style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
               />
               <div
@@ -1266,6 +1267,50 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           </div>
         </div>
       </div>
+
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,37,64,0.92)",
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "32px 20px",
+            cursor: "zoom-out",
+          }}
+        >
+          <div
+            onClick={() => setLightboxSrc(null)}
+            style={{
+              position: "fixed",
+              top: 16,
+              right: 20,
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)",
+              color: "#fff",
+              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </div>
+          <img
+            src={lightboxSrc}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 8, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", cursor: "default" }}
+          />
+        </div>
+      )}
     </div>
   );
 }
