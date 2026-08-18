@@ -1025,7 +1025,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
         </Field>
 
         <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
-          현장 사진 (최대 {MAX_JOB_PHOTOS}장)
+          현장/실측 사진 (최대 {MAX_JOB_PHOTOS}장)
         </div>
         <div className="flex flex-wrap gap-2">
           {photos.map((src, i) => (
