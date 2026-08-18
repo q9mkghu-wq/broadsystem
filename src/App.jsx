@@ -26,7 +26,7 @@ const PROD_COLOR = {
   "대기중": { bg: "#EDE9DD", text: GRAY, border: "#C9C3B3" },
   "제작중": { bg: "#FCEEDF", text: "#B15A16", border: "#E8A768" },
   "제작완료": { bg: "#E7F0E3", text: GREEN, border: "#9FC08F" },
-  "상차완료": { bg: "#EDE7F6", text: "#5B4F79", border: "#B8A8D9" },
+  "상차완료": { bg: "#FDF3C7", text: "#1E3A5F", border: "#E8D477" },
   "설치완료": { bg: "#E6F1FB", text: "#0C447C", border: "#85B7EB" },
 };
 
