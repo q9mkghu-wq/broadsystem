@@ -553,7 +553,15 @@ export default function InstallBoard() {
                         title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
                       >
                         {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
-                        (<span style={{ color: j.productionStatus === "제작완료" ? "#C0392B" : "inherit" }}>{j.productionStatus}</span>)
+                        (<span
+                          style={
+                            j.productionStatus === "제작완료"
+                              ? { background: "#C0392B", color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
+                              : {}
+                          }
+                        >
+                          {j.productionStatus}
+                        </span>)
                         <br />
                         <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
                       </div>
