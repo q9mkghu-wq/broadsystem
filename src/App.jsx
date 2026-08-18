@@ -738,7 +738,7 @@ export default function InstallBoard() {
                         (<span
                           style={
                             j.productionStatus === "제작완료"
-                              ? { background: "#C0392B", color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
+                              ? { background: NAVY_LIGHT, color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
                               : {}
                           }
                         >
