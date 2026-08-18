@@ -132,6 +132,7 @@ export default function InstallBoard() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [editingJob, setEditingJob] = useState(null);
   const [techFilter, setTechFilter] = useState("전체");
+  const [viewMode, setViewMode] = useState("calendar");
   const [confirmReset, setConfirmReset] = useState(false);
   const [techPhones, setTechPhones] = useState({});
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
@@ -276,6 +277,18 @@ export default function InstallBoard() {
     if (techFilter === "전체") return jobs;
     return jobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
   }, [jobs, techFilter]);
+
+  const pendingJobs = useMemo(() => {
+    return visibleJobs
+      .filter((j) => !j.installDate)
+      .sort((a, b) => {
+        // Not-yet-measured jobs first, then by order date (oldest first)
+        const aMeasured = a.measureDate ? 1 : 0;
+        const bMeasured = b.measureDate ? 1 : 0;
+        if (aMeasured !== bMeasured) return aMeasured - bMeasured;
+        return (a.orderDate || "").localeCompare(b.orderDate || "");
+      });
+  }, [visibleJobs]);
 
   // events per date: {orderDate, measureDate, installDate}
   const eventsByDate = useMemo(() => {
@@ -485,6 +498,98 @@ export default function InstallBoard() {
         </button>
       </div>
 
+      {/* View tabs */}
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setViewMode("calendar")}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            padding: "8px 14px",
+            borderRadius: 6,
+            border: `1px solid ${viewMode === "calendar" ? NAVY : GRID_LINE}`,
+            background: viewMode === "calendar" ? NAVY : "#fff",
+            color: viewMode === "calendar" ? "#fff" : INK,
+            cursor: "pointer",
+          }}
+        >
+          📅 달력
+        </button>
+        <button
+          onClick={() => setViewMode("pending")}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            padding: "8px 14px",
+            borderRadius: 6,
+            border: `1px solid ${viewMode === "pending" ? ORANGE : GRID_LINE}`,
+            background: viewMode === "pending" ? ORANGE : "#fff",
+            color: viewMode === "pending" ? "#fff" : INK,
+            cursor: "pointer",
+          }}
+        >
+          📋 설치일 미정 고객 {pendingJobs.length > 0 && `(${pendingJobs.length})`}
+        </button>
+      </div>
+
+      {viewMode === "pending" ? (
+        <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, color: NAVY, fontSize: 14, marginBottom: 4 }}>
+            설치일 미정 고객 ({pendingJobs.length}건)
+          </div>
+          <div style={{ fontSize: 12, color: GRAY, marginBottom: 12 }}>
+            아직 설치일이 정해지지 않은 주문이에요. 실측 후 치수를 입력하고, 설치일이 정해지면 카드를 열어 설치일을 넣어주세요 — 넣는 즉시 달력에도 자동으로 나타나요.
+          </div>
+
+          {pendingJobs.length === 0 && (
+            <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>설치일 미정 고객이 없습니다.</div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {pendingJobs.map((j) => (
+              <div key={j.id} style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "10px 12px", background: "#fff" }}>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div style={{ fontWeight: 700, fontSize: 14, color: INK }}>
+                    {j.siteName || "(현장명 미입력)"}
+                  </div>
+                  <Stamp text={j.productionStatus} />
+                </div>
+                <div style={{ fontSize: 12, color: GRAY, marginTop: 2 }}>
+                  {j.address && <span><MapPin size={11} style={{ display: "inline", marginRight: 3, verticalAlign: -1 }} />{j.address}</span>}
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2" style={{ fontSize: 12 }}>
+                  <span style={{ color: GRAY }}>주문 {j.orderDate ? fmtDate(j.orderDate) : "-"}</span>
+                  <span style={{ color: j.measureDate ? NAVY_LIGHT : "#B15A16", fontWeight: j.measureDate ? 400 : 700 }}>
+                    실측 {j.measureDate ? `${fmtDate(j.measureDate)}${j.measureTech ? " · " + j.measureTech : ""}` : "실측 필요"}
+                  </span>
+                </div>
+                {(j.width || j.heightCm || j.ceilingHeight) && (
+                  <div style={{ fontSize: 12, color: INK, marginTop: 4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                    W{j.width || "-"} × H{j.heightCm || "-"} · 천고 {j.ceilingHeight || "-"}
+                  </div>
+                )}
+                <div className="flex gap-2 mt-2">
+                  <a
+                    href="https://q9mkghu-wq.github.io/hanger-survey/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, fontWeight: 700, color: NAVY_LIGHT, border: `1px solid ${NAVY_LIGHT}`, borderRadius: 5, padding: "6px 10px", textDecoration: "none" }}
+                  >
+                    📐 실측 앱 열기
+                  </a>
+                  <button
+                    onClick={() => setEditingJob(j)}
+                    style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "6px 10px", cursor: "pointer" }}
+                  >
+                    정보 입력 / 설치일 지정
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Calendar */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
         <div className="flex items-center justify-between mb-2">
@@ -631,6 +736,8 @@ export default function InstallBoard() {
           ))}
         </div>
       </div>
+      </>
+      )}
 
       <div className="flex justify-end mt-4">
         {!confirmReset ? (
