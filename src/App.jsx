@@ -860,7 +860,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const MAX_JOB_PHOTOS = 10;
-  const MAX_JOB_DRAWINGS = 5;
+  const MAX_JOB_DRAWINGS = 10;
   const surveyAppUrl = `https://q9mkghu-wq.github.io/hanger-survey/?jobId=${encodeURIComponent(job.id)}&name=${encodeURIComponent(job.siteName || "")}`;
 
   useEffect(() => {
