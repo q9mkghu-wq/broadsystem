@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw, Phone, LogOut, UserPlus } from "lucide-react";
 import { db, auth } from "./firebase";
-import { doc, onSnapshot, setDoc, collection, query, where } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, collection, query, where, writeBatch } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 function toEmail(username) {
   return `${String(username || "").trim().toLowerCase()}@broadsystem.local`;
 }
 
-const jobsDocRef = doc(db, "board", "jobs");
+const jobsCollectionRef = collection(db, "jobs");
+const legacyJobsDocRef = doc(db, "board", "jobs"); // old single-document storage, kept only for one-time migration
 const techDocRef = doc(db, "board", "technicians");
 
 const PAPER = "#F3EFE4";
@@ -54,11 +55,34 @@ function emptyJob(dateKey) {
     heightCm: "",
     ceilingHeight: "",
     drawingMemo: "",
+    photos: [],
     productionStatus: "대기중",
     installDate: "",
     installTech: "",
     memo: "",
   };
+}
+
+function resizeImageFile(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("이미지를 읽을 수 없습니다."));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function CornerMarks() {
@@ -171,10 +195,27 @@ export default function InstallBoard() {
       setLoaded(false);
       return;
     }
+    let migrated = false;
     const unsub = onSnapshot(
-      jobsDocRef,
-      (snap) => {
-        setJobs(snap.exists() ? snap.data().jobs || [] : []);
+      jobsCollectionRef,
+      async (snap) => {
+        if (snap.empty && !migrated) {
+          // One-time migration from the old single-document format, if any legacy data exists.
+          migrated = true;
+          try {
+            const legacy = await getDoc(legacyJobsDocRef);
+            const legacyJobs = legacy.exists() ? legacy.data().jobs || [] : [];
+            if (legacyJobs.length) {
+              const batch = writeBatch(db);
+              legacyJobs.forEach((j) => batch.set(doc(db, "jobs", j.id), j));
+              await batch.commit();
+              return; // onSnapshot fires again automatically with the migrated data
+            }
+          } catch (e) {
+            // ignore migration errors — just proceed with an empty board
+          }
+        }
+        setJobs(snap.docs.map((d) => d.data()));
         setError("");
         setLoaded(true);
       },
@@ -214,13 +255,25 @@ export default function InstallBoard() {
     return () => unsub();
   }, [user]);
 
-  const persist = useCallback(async (next) => {
+  const persistJob = useCallback(async (job) => {
     setSaving(true);
     try {
-      await setDoc(jobsDocRef, { jobs: next, updatedAt: Date.now() });
+      await setDoc(doc(db, "jobs", job.id), job);
       setError("");
     } catch (e) {
-      setError("저장 중 오류가 발생했습니다.");
+      setError("저장 중 오류가 발생했습니다. 사진 용량이 너무 크면 실패할 수 있어요 — 사진 수를 줄여서 다시 시도해 주세요.");
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
+  const removeJob = useCallback(async (id) => {
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, "jobs", id));
+      setError("");
+    } catch (e) {
+      setError("삭제 중 오류가 발생했습니다.");
     } finally {
       setSaving(false);
     }
@@ -229,26 +282,33 @@ export default function InstallBoard() {
   const saveJob = (job) => {
     setJobs((prev) => {
       const exists = prev.some((j) => j.id === job.id);
-      const next = exists ? prev.map((j) => (j.id === job.id ? job : j)) : [...prev, job];
-      persist(next);
-      return next;
+      return exists ? prev.map((j) => (j.id === job.id ? job : j)) : [...prev, job];
     });
+    persistJob(job);
     setEditingJob(null);
   };
 
   const deleteJob = (id) => {
-    setJobs((prev) => {
-      const next = prev.filter((j) => j.id !== id);
-      persist(next);
-      return next;
-    });
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+    removeJob(id);
     setEditingJob(null);
   };
 
   const resetAll = async () => {
-    setJobs([]);
-    await persist([]);
-    setConfirmReset(false);
+    setSaving(true);
+    try {
+      const snap = await getDocs(jobsCollectionRef);
+      const batch = writeBatch(db);
+      snap.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      setJobs([]);
+      setError("");
+    } catch (e) {
+      setError("초기화 중 오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
+      setConfirmReset(false);
+    }
   };
 
   const savePhones = async (nextPhones) => {
@@ -643,6 +703,11 @@ export default function InstallBoard() {
                     {ev.install.map((j) => (
                       <div
                         key={j.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDate(key);
+                          setEditingJob(j);
+                        }}
                         style={{
                           fontSize: 9,
                           lineHeight: 1.3,
@@ -654,8 +719,9 @@ export default function InstallBoard() {
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
+                          cursor: "pointer",
                         }}
-                        title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
+                        title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"} — 클릭하면 주문 상세가 열립니다`}
                       >
                         {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
                         (<span
@@ -783,10 +849,61 @@ export default function InstallBoard() {
 
 function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const [form, setForm] = useState(job);
+  const [photos, setPhotos] = useState(job.photos || []);
+  const [photoStatus, setPhotoStatus] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const fileInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const MAX_JOB_PHOTOS = 10;
+  const MAX_PHOTO_BYTES = 900000; // stay safely under Firestore's 1MiB per-document limit
+
+  const totalPhotoBytes = () => photos.reduce((sum, p) => sum + p.length, 0);
+
+  const handlePhotoFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const room = MAX_JOB_PHOTOS - photos.length;
+    if (room <= 0) {
+      setPhotoStatus(`최대 ${MAX_JOB_PHOTOS}장까지만 첨부할 수 있어요.`);
+      return;
+    }
+    const toProcess = files.slice(0, room);
+    const skipped = files.length - toProcess.length;
+    setPhotoBusy(true);
+    setPhotoStatus("사진 처리 중…");
+    try {
+      let added = 0;
+      let blockedBySize = false;
+      for (const file of toProcess) {
+        const dataUrl = await resizeImageFile(file, 900, 0.55);
+        if (totalPhotoBytes() + dataUrl.length > MAX_PHOTO_BYTES) {
+          blockedBySize = true;
+          break;
+        }
+        setPhotos((prev) => [...prev, dataUrl]);
+        added += 1;
+      }
+      if (blockedBySize) {
+        setPhotoStatus(`사진 용량이 한도에 가까워 ${added}장만 추가했어요. 사진을 더 넣으려면 기존 사진을 지워주세요.`);
+      } else if (skipped > 0) {
+        setPhotoStatus(`사진 ${added}장 첨부됨 (최대 ${MAX_JOB_PHOTOS}장이라 ${skipped}장은 제외).`);
+      } else {
+        setPhotoStatus(`사진 ${added}장 첨부됨. 저장을 눌러야 반영됩니다.`);
+      }
+    } catch (e) {
+      setPhotoStatus("사진을 처리하지 못했습니다.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removePhoto = (idx) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    setPhotoStatus("");
+  };
 
   const handleSave = () => {
-    onSave(form);
+    onSave({ ...form, photos });
   };
 
   return (
@@ -851,20 +968,60 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Field label="가로(cm)" icon={<Ruler size={12} />}>
-            <input style={inputStyle} value={form.width} onChange={set("width")} placeholder="0" />
-          </Field>
-          <Field label="세로(cm)" icon={<Ruler size={12} />}>
-            <input style={inputStyle} value={form.heightCm} onChange={set("heightCm")} placeholder="0" />
-          </Field>
-          <Field label="천장고(cm)" icon={<Ruler size={12} />}>
-            <input style={inputStyle} value={form.ceilingHeight} onChange={set("ceilingHeight")} placeholder="0" />
-          </Field>
-        </div>
         <Field label="도면/사진 메모 (링크 또는 설명)" icon={<StickyNote size={12} />}>
           <textarea style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} value={form.drawingMemo} onChange={set("drawingMemo")} placeholder="카톡으로 보낸 사진 링크나 도면 설명을 적어주세요" />
         </Field>
+
+        <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
+          현장 사진 (최대 {MAX_JOB_PHOTOS}장)
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {photos.map((src, i) => (
+            <div key={i} style={{ position: "relative", width: 64, height: 64, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#F3EFE4" }}>
+              <img
+                src={src}
+                alt=""
+                onClick={() => window.open(src, "_blank")}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
+              />
+              <div
+                onClick={() => removePhoto(i)}
+                style={{
+                  position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%",
+                  background: "rgba(15,37,64,0.7)", color: "#fff", fontSize: 11, lineHeight: "18px",
+                  textAlign: "center", cursor: "pointer",
+                }}
+              >
+                ✕
+              </div>
+            </div>
+          ))}
+          {photos.length < MAX_JOB_PHOTOS && (
+            <div
+              onClick={() => !photoBusy && fileInputRef.current && fileInputRef.current.click()}
+              style={{
+                width: 64, height: 64, borderRadius: 8, border: `1.5px dashed ${GRID_LINE}`, background: "#FBF9F3",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: GRAY,
+                cursor: photoBusy ? "not-allowed" : "pointer", flexShrink: 0,
+              }}
+            >
+              +
+            </div>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            handlePhotoFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {photoStatus && <div style={{ fontSize: 11.5, color: GRAY, marginTop: 6 }}>{photoStatus}</div>}
 
         <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>제작</div>
         <Field label="제작 상태" icon={<Factory size={12} />}>
