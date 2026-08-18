@@ -742,6 +742,8 @@ export default function InstallBoard() {
                               ? { background: NAVY_LIGHT, color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
                               : j.productionStatus === "설치완료"
                               ? { background: "#C0392B", color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
+                              : j.productionStatus === "상차완료"
+                              ? { background: PROD_COLOR["상차완료"].bg, color: PROD_COLOR["상차완료"].text, borderRadius: 3, padding: "0 3px", fontWeight: 800 }
                               : {}
                           }
                         >
