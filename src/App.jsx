@@ -21,11 +21,12 @@ const GREEN = "#3F6B3F";
 const GRAY = "#8B8478";
 const GRID_LINE = "#D9D3C2";
 
-const PROD_STATUS = ["대기중", "제작중", "제작완료", "설치완료"];
+const PROD_STATUS = ["대기중", "제작중", "제작완료", "상차완료", "설치완료"];
 const PROD_COLOR = {
   "대기중": { bg: "#EDE9DD", text: GRAY, border: "#C9C3B3" },
   "제작중": { bg: "#FCEEDF", text: "#B15A16", border: "#E8A768" },
   "제작완료": { bg: "#E7F0E3", text: GREEN, border: "#9FC08F" },
+  "상차완료": { bg: "#EDE7F6", text: "#5B4F79", border: "#B8A8D9" },
   "설치완료": { bg: "#E6F1FB", text: "#0C447C", border: "#85B7EB" },
 };
 
@@ -407,7 +408,7 @@ export default function InstallBoard() {
     const tk = todayKey();
     const measureToday = jobs.filter((j) => j.measureDate === tk).length;
     const installToday = jobs.filter((j) => j.installDate === tk).length;
-    const waitingProd = jobs.filter((j) => j.productionStatus !== "제작완료" && j.productionStatus !== "설치완료" && j.measureDate).length;
+    const waitingProd = jobs.filter((j) => j.productionStatus !== "제작완료" && j.productionStatus !== "상차완료" && j.productionStatus !== "설치완료" && j.measureDate).length;
     return { measureToday, installToday, waitingProd };
   }, [jobs]);
 
@@ -739,6 +740,8 @@ export default function InstallBoard() {
                           style={
                             j.productionStatus === "제작완료"
                               ? { background: NAVY_LIGHT, color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
+                              : j.productionStatus === "설치완료"
+                              ? { background: "#C0392B", color: "#fff", borderRadius: 3, padding: "0 3px", fontWeight: 800 }
                               : {}
                           }
                         >
