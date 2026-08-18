@@ -388,19 +388,20 @@ export default function InstallBoard() {
 
   const monthPrefix = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
 
-  const dayJobsForSelected = useMemo(() => {
-    const inMonth = (dateStr) => dateStr && dateStr.startsWith(monthPrefix);
+  // Jobs with no install date yet: not tied to any specific month, so they always show,
+  // in every month's list, at the top, in their own labeled box.
+  const unsetInstallJobs = useMemo(() => {
     return visibleJobs
-      .filter((j) => inMonth(j.orderDate) || inMonth(j.measureDate) || inMonth(j.installDate))
-      .sort((a, b) => {
-        const aUnset = a.installDate ? 0 : 1;
-        const bUnset = b.installDate ? 0 : 1;
-        if (aUnset !== bUnset) return bUnset - aUnset;
-        // within the same group, earliest relevant date first
-        const aDate = a.installDate || a.measureDate || a.orderDate || "";
-        const bDate = b.installDate || b.measureDate || b.orderDate || "";
-        return aDate.localeCompare(bDate);
-      });
+      .filter((j) => !j.installDate)
+      .sort((a, b) => (a.orderDate || "").localeCompare(b.orderDate || ""));
+  }, [visibleJobs]);
+
+  // Jobs with an install date: shown only in the month their install date falls in —
+  // never in the order month, even if the order came in a different month.
+  const monthDatedJobs = useMemo(() => {
+    return visibleJobs
+      .filter((j) => j.installDate && j.installDate.startsWith(monthPrefix))
+      .sort((a, b) => a.installDate.localeCompare(b.installDate));
   }, [visibleJobs, monthPrefix]);
 
   const todaySummary = useMemo(() => {
@@ -769,7 +770,7 @@ export default function InstallBoard() {
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
-            {monthLabel} 전체 일정 ({dayJobsForSelected.length}건)
+            {monthLabel} 전체 일정 ({unsetInstallJobs.length + monthDatedJobs.length}건)
           </div>
           <button
             onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
@@ -780,22 +781,52 @@ export default function InstallBoard() {
           </button>
         </div>
 
-        {dayJobsForSelected.length === 0 && (
-          <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>이번 달 등록된 일정이 없습니다.</div>
+        {unsetInstallJobs.length > 0 && (
+          <div style={{ border: `1.5px dashed #E8C79A`, background: "#FDF4E3", borderRadius: 8, padding: 10, marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: "#B15A16", fontSize: 12.5, marginBottom: 8 }}>
+              📌 설치일 미정 ({unsetInstallJobs.length}건)
+            </div>
+            <div className="flex flex-col gap-2">
+              {unsetInstallJobs.map((j) => (
+                <div
+                  key={j.id}
+                  onClick={() => setEditingJob(j)}
+                  style={{ border: `1px solid #E8C79A`, borderRadius: 6, padding: "10px 12px", background: "#fff", cursor: "pointer" }}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div style={{ fontWeight: 700, fontSize: 14, color: INK }}>
+                      {j.siteName || "(현장명 미입력)"}
+                    </div>
+                    <Stamp text={j.productionStatus} />
+                  </div>
+                  <div style={{ fontSize: 12, color: GRAY, marginTop: 2 }}>
+                    {j.address && <span><MapPin size={11} style={{ display: "inline", marginRight: 3, verticalAlign: -1 }} />{j.address}</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-3 mt-2" style={{ fontSize: 12 }}>
+                    <span style={{ color: GRAY }}>주문 {j.orderDate ? fmtDate(j.orderDate) : "-"}</span>
+                    <span style={{ color: NAVY_LIGHT }}>
+                      실측 {j.measureDate ? fmtDate(j.measureDate) : "미정"}{j.measureTech ? ` · ${j.measureTech}` : ""}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ fontWeight: 800, color: NAVY, fontSize: 12.5, marginBottom: 8 }}>
+          {monthLabel} 설치 예정 ({monthDatedJobs.length}건)
+        </div>
+        {monthDatedJobs.length === 0 && (
+          <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>이번 달 설치 예정 건이 없습니다.</div>
         )}
 
         <div className="flex flex-col gap-2">
-          {dayJobsForSelected.map((j) => (
+          {monthDatedJobs.map((j) => (
             <div
               key={j.id}
               onClick={() => setEditingJob(j)}
-              style={{
-                border: `1px solid ${j.installDate ? GRID_LINE : "#E8C79A"}`,
-                borderRadius: 6,
-                padding: "10px 12px",
-                background: j.installDate ? "#fff" : "#FDF4E3",
-                cursor: "pointer",
-              }}
+              style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "10px 12px", background: "#fff", cursor: "pointer" }}
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div style={{ fontWeight: 700, fontSize: 14, color: INK }}>
@@ -811,7 +842,7 @@ export default function InstallBoard() {
                   실측 {j.measureDate ? fmtDate(j.measureDate) : "미정"}{j.measureTech ? ` · ${j.measureTech}` : ""}
                 </span>
                 <span style={{ color: ORANGE }}>
-                  설치 {j.installDate ? fmtDate(j.installDate) : "미정"}{j.installTech ? ` · ${j.installTech}` : ""}
+                  설치 {fmtDate(j.installDate)}{j.installTech ? ` · ${j.installTech}` : ""}
                 </span>
               </div>
               {(j.width || j.heightCm || j.ceilingHeight) && (
