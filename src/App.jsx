@@ -56,6 +56,7 @@ function emptyJob(dateKey) {
     ceilingHeight: "",
     drawingMemo: "",
     photos: [],
+    officeDrawings: [],
     productionStatus: "대기중",
     installDate: "",
     installTech: "",
@@ -852,12 +853,18 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const [photos, setPhotos] = useState(job.photos || []);
   const [photoStatus, setPhotoStatus] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [officeDrawings, setOfficeDrawings] = useState(job.officeDrawings || []);
+  const [drawingStatus, setDrawingStatus] = useState("");
+  const [drawingBusy, setDrawingBusy] = useState(false);
   const fileInputRef = useRef(null);
+  const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const MAX_JOB_PHOTOS = 10;
-  const MAX_PHOTO_BYTES = 900000; // stay safely under Firestore's 1MiB per-document limit
+  const MAX_JOB_DRAWINGS = 5;
+  const MAX_TOTAL_BYTES = 900000; // shared budget for photos + drawings, safely under Firestore's 1MiB per-document limit
 
-  const totalPhotoBytes = () => photos.reduce((sum, p) => sum + p.length, 0);
+  const totalUsedBytes = () =>
+    photos.reduce((sum, p) => sum + p.length, 0) + officeDrawings.reduce((sum, p) => sum + p.length, 0);
 
   const handlePhotoFiles = async (fileList) => {
     const files = Array.from(fileList || []);
@@ -876,7 +883,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
       let blockedBySize = false;
       for (const file of toProcess) {
         const dataUrl = await resizeImageFile(file, 900, 0.55);
-        if (totalPhotoBytes() + dataUrl.length > MAX_PHOTO_BYTES) {
+        if (totalUsedBytes() + dataUrl.length > MAX_TOTAL_BYTES) {
           blockedBySize = true;
           break;
         }
@@ -884,7 +891,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
         added += 1;
       }
       if (blockedBySize) {
-        setPhotoStatus(`사진 용량이 한도에 가까워 ${added}장만 추가했어요. 사진을 더 넣으려면 기존 사진을 지워주세요.`);
+        setPhotoStatus(`용량이 한도에 가까워 ${added}장만 추가했어요. 더 넣으려면 기존 사진/도면을 지워주세요.`);
       } else if (skipped > 0) {
         setPhotoStatus(`사진 ${added}장 첨부됨 (최대 ${MAX_JOB_PHOTOS}장이라 ${skipped}장은 제외).`);
       } else {
@@ -902,8 +909,52 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
     setPhotoStatus("");
   };
 
+  const handleDrawingFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const room = MAX_JOB_DRAWINGS - officeDrawings.length;
+    if (room <= 0) {
+      setDrawingStatus(`최대 ${MAX_JOB_DRAWINGS}장까지만 첨부할 수 있어요.`);
+      return;
+    }
+    const toProcess = files.slice(0, room);
+    const skipped = files.length - toProcess.length;
+    setDrawingBusy(true);
+    setDrawingStatus("도면 처리 중…");
+    try {
+      let added = 0;
+      let blockedBySize = false;
+      for (const file of toProcess) {
+        // Drawings usually have small text/lines, so keep more resolution than site photos.
+        const dataUrl = await resizeImageFile(file, 1400, 0.6);
+        if (totalUsedBytes() + dataUrl.length > MAX_TOTAL_BYTES) {
+          blockedBySize = true;
+          break;
+        }
+        setOfficeDrawings((prev) => [...prev, dataUrl]);
+        added += 1;
+      }
+      if (blockedBySize) {
+        setDrawingStatus(`용량이 한도에 가까워 ${added}장만 추가했어요. 더 넣으려면 기존 사진/도면을 지워주세요.`);
+      } else if (skipped > 0) {
+        setDrawingStatus(`도면 ${added}장 첨부됨 (최대 ${MAX_JOB_DRAWINGS}장이라 ${skipped}장은 제외).`);
+      } else {
+        setDrawingStatus(`도면 ${added}장 첨부됨. 저장을 눌러야 반영됩니다.`);
+      }
+    } catch (e) {
+      setDrawingStatus("도면을 처리하지 못했습니다.");
+    } finally {
+      setDrawingBusy(false);
+    }
+  };
+
+  const removeDrawing = (idx) => {
+    setOfficeDrawings((prev) => prev.filter((_, i) => i !== idx));
+    setDrawingStatus("");
+  };
+
   const handleSave = () => {
-    onSave({ ...form, photos });
+    onSave({ ...form, photos, officeDrawings });
   };
 
   return (
@@ -1022,6 +1073,59 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           }}
         />
         {photoStatus && <div style={{ fontSize: 11.5, color: GRAY, marginTop: 6 }}>{photoStatus}</div>}
+
+        <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
+          제작 도면 (사무실 업로드, 최대 {MAX_JOB_DRAWINGS}장)
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {officeDrawings.map((src, i) => (
+            <div key={i} style={{ position: "relative", width: 64, height: 64, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#F3EFE4" }}>
+              <img
+                src={src}
+                alt=""
+                onClick={() => window.open(src, "_blank")}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
+              />
+              <div
+                onClick={() => removeDrawing(i)}
+                style={{
+                  position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%",
+                  background: "rgba(15,37,64,0.7)", color: "#fff", fontSize: 11, lineHeight: "18px",
+                  textAlign: "center", cursor: "pointer",
+                }}
+              >
+                ✕
+              </div>
+            </div>
+          ))}
+          {officeDrawings.length < MAX_JOB_DRAWINGS && (
+            <div
+              onClick={() => !drawingBusy && drawingInputRef.current && drawingInputRef.current.click()}
+              style={{
+                width: 64, height: 64, borderRadius: 8, border: `1.5px dashed ${GRID_LINE}`, background: "#FBF9F3",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: GRAY,
+                cursor: drawingBusy ? "not-allowed" : "pointer", flexShrink: 0,
+              }}
+            >
+              +
+            </div>
+          )}
+        </div>
+        <input
+          ref={drawingInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            handleDrawingFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {drawingStatus && <div style={{ fontSize: 11.5, color: GRAY, marginTop: 6 }}>{drawingStatus}</div>}
+        <div style={{ fontSize: 11.5, color: GRAY, background: "#EEF3F7", borderRadius: 6, padding: "8px 10px", marginTop: 6, lineHeight: 1.5 }}>
+          제작이 확정된 도면 이미지를 사무실에서 여기에 올려두면, 기사님이 설치 전에 확인할 수 있어요.
+        </div>
 
         <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>제작</div>
         <Field label="제작 상태" icon={<Factory size={12} />}>
