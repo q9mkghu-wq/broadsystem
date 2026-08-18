@@ -570,7 +570,7 @@ export default function InstallBoard() {
                 )}
                 <div className="flex gap-2 mt-2">
                   <a
-                    href="https://q9mkghu-wq.github.io/hanger-survey/"
+                    href={`https://q9mkghu-wq.github.io/hanger-survey/?jobId=${encodeURIComponent(j.id)}&name=${encodeURIComponent(j.siteName || "")}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ fontSize: 12, fontWeight: 700, color: NAVY_LIGHT, border: `1px solid ${NAVY_LIGHT}`, borderRadius: 5, padding: "6px 10px", textDecoration: "none" }}
