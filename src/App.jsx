@@ -385,16 +385,22 @@ export default function InstallBoard() {
     return rows;
   }, [cursor]);
 
+  const monthPrefix = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
+
   const dayJobsForSelected = useMemo(() => {
-    if (!selectedDate) return [];
+    const inMonth = (dateStr) => dateStr && dateStr.startsWith(monthPrefix);
     return visibleJobs
-      .filter((j) => j.orderDate === selectedDate || j.measureDate === selectedDate || j.installDate === selectedDate)
+      .filter((j) => inMonth(j.orderDate) || inMonth(j.measureDate) || inMonth(j.installDate))
       .sort((a, b) => {
         const aUnset = a.installDate ? 0 : 1;
         const bUnset = b.installDate ? 0 : 1;
-        return bUnset - aUnset;
+        if (aUnset !== bUnset) return bUnset - aUnset;
+        // within the same group, earliest relevant date first
+        const aDate = a.installDate || a.measureDate || a.orderDate || "";
+        const bDate = b.installDate || b.measureDate || b.orderDate || "";
+        return aDate.localeCompare(bDate);
       });
-  }, [visibleJobs, selectedDate]);
+  }, [visibleJobs, monthPrefix]);
 
   const todaySummary = useMemo(() => {
     const tk = todayKey();
@@ -750,27 +756,27 @@ export default function InstallBoard() {
 
         <div className="flex flex-wrap gap-3 mt-3" style={{ fontSize: 11, color: GRAY }}>
           <span><span style={{ display: "inline-block", width: 8, height: 8, background: ORANGE, borderRadius: 2, marginRight: 4 }} />설치일</span>
-          <span>날짜를 누르면 주문·실측·설치 내역을 모두 볼 수 있어요</span>
+          <span>날짜를 누르면 새 주문을 그 날짜로 등록할 수 있어요 · 아래는 이번 달 전체 목록이에요</span>
         </div>
       </div>
 
-      {/* Day detail */}
+      {/* Month detail */}
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14 }}>
         <div className="flex items-center justify-between mb-2">
           <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
-            {fmtDate(selectedDate)} 일정 ({dayJobsForSelected.length}건)
+            {monthLabel} 전체 일정 ({dayJobsForSelected.length}건)
           </div>
           <button
             onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
             disabled={!!error}
             style={{ fontSize: 12, color: error ? GRAY : NAVY_LIGHT, background: "transparent", border: `1px solid ${error ? GRAY : NAVY_LIGHT}`, borderRadius: 5, padding: "4px 9px", cursor: error ? "not-allowed" : "pointer" }}
           >
-            + 이 날짜에 등록
+            + {fmtDate(selectedDate)}에 등록
           </button>
         </div>
 
         {dayJobsForSelected.length === 0 && (
-          <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>등록된 일정이 없습니다.</div>
+          <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>이번 달 등록된 일정이 없습니다.</div>
         )}
 
         <div className="flex flex-col gap-2">
