@@ -552,7 +552,7 @@ export default function InstallBoard() {
                         }}
                         title={`${getRegion(j.address)} ${j.siteName || ""} · ${j.installTech || "미배정"}`}
                       >
-                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}
+                        {getRegion(j.address) || "지역미정"} {j.siteName || "고객명미정"}({j.productionStatus})
                         <br />
                         <span style={{ fontWeight: 700, color: INK }}>{j.installTech || "기사미배정"}</span>
                       </div>
