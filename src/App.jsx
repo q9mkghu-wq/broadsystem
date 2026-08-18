@@ -387,9 +387,13 @@ export default function InstallBoard() {
 
   const dayJobsForSelected = useMemo(() => {
     if (!selectedDate) return [];
-    return visibleJobs.filter(
-      (j) => j.orderDate === selectedDate || j.measureDate === selectedDate || j.installDate === selectedDate
-    );
+    return visibleJobs
+      .filter((j) => j.orderDate === selectedDate || j.measureDate === selectedDate || j.installDate === selectedDate)
+      .sort((a, b) => {
+        const aUnset = a.installDate ? 0 : 1;
+        const bUnset = b.installDate ? 0 : 1;
+        return bUnset - aUnset;
+      });
   }, [visibleJobs, selectedDate]);
 
   const todaySummary = useMemo(() => {
@@ -774,7 +778,13 @@ export default function InstallBoard() {
             <div
               key={j.id}
               onClick={() => setEditingJob(j)}
-              style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "10px 12px", background: "#fff", cursor: "pointer" }}
+              style={{
+                border: `1px solid ${j.installDate ? GRID_LINE : "#E8C79A"}`,
+                borderRadius: 6,
+                padding: "10px 12px",
+                background: j.installDate ? "#fff" : "#FDF4E3",
+                cursor: "pointer",
+              }}
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div style={{ fontWeight: 700, fontSize: 14, color: INK }}>
