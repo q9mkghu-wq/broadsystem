@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw, Phone, LogOut, UserPlus } from "lucide-react";
-import { db, auth } from "./firebase";
+import { db, auth, surveyDb } from "./firebase";
 import { doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, collection, query, where, writeBatch } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
@@ -54,7 +54,6 @@ function emptyJob(dateKey) {
     width: "",
     heightCm: "",
     ceilingHeight: "",
-    drawingMemo: "",
     photos: [],
     officeDrawings: [],
     productionStatus: "대기중",
@@ -856,11 +855,37 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const [officeDrawings, setOfficeDrawings] = useState(job.officeDrawings || []);
   const [drawingStatus, setDrawingStatus] = useState("");
   const [drawingBusy, setDrawingBusy] = useState(false);
+  const [surveyRooms, setSurveyRooms] = useState(null); // null = loading, [] = none found, array = found
   const fileInputRef = useRef(null);
   const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const MAX_JOB_PHOTOS = 10;
   const MAX_JOB_DRAWINGS = 5;
+  const surveyAppUrl = `https://q9mkghu-wq.github.io/hanger-survey/?jobId=${encodeURIComponent(job.id)}&name=${encodeURIComponent(job.siteName || "")}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const idxSnap = await getDoc(doc(surveyDb, "hanger_survey_kv", "rooms-index"));
+        const ids = idxSnap.exists() ? JSON.parse(idxSnap.data().value) : [];
+        const rooms = [];
+        for (const id of ids) {
+          try {
+            const r = await getDoc(doc(surveyDb, "hanger_survey_kv", "rooms:" + id));
+            if (r.exists()) {
+              const parsed = JSON.parse(r.data().value);
+              if (parsed.jobId === job.id) rooms.push(parsed);
+            }
+          } catch (e) { /* skip unreadable record */ }
+        }
+        if (!cancelled) setSurveyRooms(rooms);
+      } catch (e) {
+        if (!cancelled) setSurveyRooms([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job.id]);
   const MAX_TOTAL_BYTES = 900000; // shared budget for photos + drawings, safely under Firestore's 1MiB per-document limit
 
   const totalUsedBytes = () =>
@@ -1020,9 +1045,48 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             </select>
           </Field>
         </div>
-        <Field label="도면/사진 메모 (링크 또는 설명)" icon={<StickyNote size={12} />}>
-          <textarea style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} value={form.drawingMemo} onChange={set("drawingMemo")} placeholder="카톡으로 보낸 사진 링크나 도면 설명을 적어주세요" />
-        </Field>
+        <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
+          실측 도면 (3D 실측앱 자동 생성)
+        </div>
+        <a
+          href={surveyAppUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#fff", background: NAVY_LIGHT, border: "none", borderRadius: 6, padding: "8px 12px", textDecoration: "none", marginBottom: 10 }}
+        >
+          🧊 3D 실측앱 열기
+        </a>
+
+        {surveyRooms === null && (
+          <div style={{ fontSize: 12, color: GRAY }}>실측 도면을 불러오는 중…</div>
+        )}
+        {surveyRooms && surveyRooms.length === 0 && (
+          <div style={{ fontSize: 12, color: GRAY }}>
+            아직 이 주문으로 저장된 실측 기록이 없어요. 위 버튼으로 실측 후 저장하면 여기에 도면이 자동으로 나타나요.
+          </div>
+        )}
+        {surveyRooms && surveyRooms.length > 0 && surveyRooms.map((room) => (
+          <div key={room.id} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 4 }}>{room.name || "이름 없음"}</div>
+            {room.drawingSnapshots && room.drawingSnapshots.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {room.drawingSnapshots.map((d, i) => (
+                  <div key={i} style={{ width: 76, flexShrink: 0 }}>
+                    <img
+                      src={d.dataUrl}
+                      alt={d.label}
+                      onClick={() => window.open(d.dataUrl, "_blank")}
+                      style={{ width: 76, height: 62, objectFit: "contain", background: "#fff", border: `1px solid ${GRID_LINE}`, borderRadius: 6, cursor: "zoom-in" }}
+                    />
+                    <div style={{ fontSize: 9.5, color: GRAY, textAlign: "center", marginTop: 2 }}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11.5, color: GRAY }}>이 기록에는 도면 이미지가 없어요 (예전 버전으로 저장됨).</div>
+            )}
+          </div>
+        ))}
 
         <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
           현장/실측 사진 (최대 {MAX_JOB_PHOTOS}장)
