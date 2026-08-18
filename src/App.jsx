@@ -1010,9 +1010,10 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           <Field label="실측일" icon={<CalendarIcon size={12} />}>
             <input type="date" style={inputStyle} value={form.measureDate} onChange={set("measureDate")} />
           </Field>
-          <Field label="실측 담당기사" icon={<User size={12} />}>
+          <Field label="실측한 사람" icon={<User size={12} />}>
             <select style={inputStyle} value={form.measureTech} onChange={set("measureTech")}>
               <option value="">선택 안 함</option>
+              <option value="고객">고객</option>
               {technicians.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
