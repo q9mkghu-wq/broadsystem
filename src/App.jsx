@@ -226,6 +226,14 @@ export default function InstallBoard() {
   useBackableLayer(phoneModalOpen, () => setPhoneModalOpen(false));
   useBackableLayer(createAccountOpen, () => setCreateAccountOpen(false));
 
+  // Safety buffer: push one base entry when the app first mounts, so opening the very
+  // first modal never sits directly on the true edge of the browser history — this
+  // keeps a stray back-button press from ever leaving the app instead of just closing
+  // a modal.
+  useEffect(() => {
+    window.history.pushState({ appBase: true }, "");
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
