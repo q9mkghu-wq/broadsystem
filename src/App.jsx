@@ -8,6 +8,51 @@ function toEmail(username) {
   return `${String(username || "").trim().toLowerCase()}@broadsystem.local`;
 }
 
+// ---------- Phone back-button support ----------
+// Each open modal/overlay pushes one browser-history entry and registers itself on this
+// stack. The back button fires 'popstate', which closes only the most recently opened
+// layer (LIFO) — so nested overlays (e.g. a photo lightbox on top of an order-detail
+// modal) close one step at a time instead of the whole app navigating away.
+const backLayerStack = [];
+let backPopstateAttached = false;
+
+function ensureBackPopstateListener() {
+  if (backPopstateAttached) return;
+  backPopstateAttached = true;
+  window.addEventListener("popstate", () => {
+    const top = backLayerStack.pop();
+    if (top) top.onClose();
+  });
+}
+
+function useBackableLayer(isOpen, onClose) {
+  const tokenRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    ensureBackPopstateListener();
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && !tokenRef.current) {
+      const token = { onClose: () => onCloseRef.current() };
+      tokenRef.current = token;
+      backLayerStack.push(token);
+      window.history.pushState({ backLayer: true }, "");
+    } else if (!isOpen && tokenRef.current) {
+      // Closed via an in-app button (not the back button) — remove our entry from the
+      // stack and pop the matching history entry so it doesn't pile up over time.
+      const idx = backLayerStack.indexOf(tokenRef.current);
+      if (idx !== -1) backLayerStack.splice(idx, 1);
+      tokenRef.current = null;
+      if (window.history.state && window.history.state.backLayer) {
+        window.history.back();
+      }
+    }
+  }, [isOpen]);
+}
+
 const jobsCollectionRef = collection(db, "jobs");
 const legacyJobsDocRef = doc(db, "board", "jobs"); // old single-document storage, kept only for one-time migration
 const techDocRef = doc(db, "board", "technicians");
@@ -167,6 +212,11 @@ export default function InstallBoard() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
+
+  // Phone back-button closes one overlay at a time, in the order they were opened.
+  useBackableLayer(!!editingJob, () => setEditingJob(null));
+  useBackableLayer(phoneModalOpen, () => setPhoneModalOpen(false));
+  useBackableLayer(createAccountOpen, () => setCreateAccountOpen(false));
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -909,6 +959,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const [drawingBusy, setDrawingBusy] = useState(false);
   const [surveyRooms, setSurveyRooms] = useState(null); // null = loading, [] = none found, array = found
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  useBackableLayer(!!lightboxSrc, () => setLightboxSrc(null));
   const fileInputRef = useRef(null);
   const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
