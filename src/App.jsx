@@ -15,11 +15,18 @@ function toEmail(username) {
 // modal) close one step at a time instead of the whole app navigating away.
 const backLayerStack = [];
 let backPopstateAttached = false;
+let suppressNextPopstate = false;
 
 function ensureBackPopstateListener() {
   if (backPopstateAttached) return;
   backPopstateAttached = true;
   window.addEventListener("popstate", () => {
+    if (suppressNextPopstate) {
+      // This popstate was caused by our own history.back() call below (syncing history
+      // after an in-app close), not a real back-button press — ignore it once.
+      suppressNextPopstate = false;
+      return;
+    }
     const top = backLayerStack.pop();
     if (top) top.onClose();
   });
@@ -47,6 +54,7 @@ function useBackableLayer(isOpen, onClose) {
       if (idx !== -1) backLayerStack.splice(idx, 1);
       tokenRef.current = null;
       if (window.history.state && window.history.state.backLayer) {
+        suppressNextPopstate = true;
         window.history.back();
       }
     }
