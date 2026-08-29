@@ -1677,7 +1677,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
 
             const color = MAP_MARKER_COLOR[j.productionStatus] || MAP_MARKER_COLOR["대기중"];
             const dotEl = document.createElement("div");
-            dotEl.style.cssText = `width:16px; height:16px; border-radius:50%; background:${color}; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4); cursor:pointer;`;
+            dotEl.style.cssText = `width:32px; height:32px; border-radius:50%; background:${color}; border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.45); cursor:pointer;`;
             const overlay = new maps.CustomOverlay({ position: pos, content: dotEl, yAnchor: 0.5, xAnchor: 0.5 });
             overlay.setMap(map);
             map.__markers.push(overlay);
@@ -1727,7 +1727,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
       <div className="flex flex-wrap gap-3 mt-2" style={{ fontSize: 11.5, color: GRAY }}>
         {Object.entries(MAP_MARKER_COLOR).map(([status, color]) => (
           <span key={status} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: color }} />
+            <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: color }} />
             {status}
           </span>
         ))}
