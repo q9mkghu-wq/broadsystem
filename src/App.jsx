@@ -1637,7 +1637,7 @@ function PhoneBookModal({ technicians, phones, onClose, onSave }) {
 }
 
 const MAP_MARKER_COLOR = {
-  "대기중": "#8B8478",
+  "대기중": "#1D63C4",
   "제작완료": "#2E7D32",
   "상차완료": "#E0631E",
 };
