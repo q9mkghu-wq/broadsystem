@@ -102,6 +102,8 @@ function emptyJob(dateKey) {
     id: "job_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
     siteName: "",
     address: "",
+    lat: null,
+    lng: null,
     orderDate: dateKey || todayKey(),
     measureDate: "",
     measureTech: "",
@@ -138,6 +140,42 @@ function resizeImageFile(file, maxDim, quality) {
     reader.readAsDataURL(file);
   });
 }
+
+// ---------- Kakao Maps helpers ----------
+let kakaoMapsLoadPromise = null;
+
+function loadKakaoMaps() {
+  if (kakaoMapsLoadPromise) return kakaoMapsLoadPromise;
+  kakaoMapsLoadPromise = new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.kakao || !window.kakao.maps) {
+      reject(new Error("카카오맵 SDK를 불러오지 못했습니다. API 키 설정을 확인해 주세요."));
+      return;
+    }
+    window.kakao.maps.load(() => resolve(window.kakao.maps));
+  });
+  return kakaoMapsLoadPromise;
+}
+
+function geocodeAddress(address) {
+  return loadKakaoMaps().then(
+    (maps) =>
+      new Promise((resolve) => {
+        if (!address || !address.trim()) {
+          resolve(null);
+          return;
+        }
+        const geocoder = new maps.services.Geocoder();
+        geocoder.addressSearch(address.trim(), (result, status) => {
+          if (status === maps.services.Status.OK && result[0]) {
+            resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) });
+          } else {
+            resolve(null);
+          }
+        });
+      })
+  );
+}
+
 
 function CornerMarks() {
   const s = { position: "absolute", width: 7, height: 7, borderColor: GRID_LINE };
@@ -212,6 +250,32 @@ export default function InstallBoard() {
   const [techFilter, setTechFilter] = useState("전체");
   const [viewMode, setViewMode] = useState("calendar");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [bulkGeocoding, setBulkGeocoding] = useState(false);
+  const [bulkGeocodeProgress, setBulkGeocodeProgress] = useState("");
+
+  const bulkGeocodeMissing = async () => {
+    const missing = visibleJobs.filter((j) => j.address && j.address.trim() && (j.lat == null || j.lng == null));
+    if (missing.length === 0) return;
+    setBulkGeocoding(true);
+    let done = 0;
+    for (const j of missing) {
+      setBulkGeocodeProgress(`${done + 1}/${missing.length} 처리 중…`);
+      try {
+        const geo = await geocodeAddress(j.address);
+        if (geo) {
+          const updated = { ...j, ...geo };
+          setJobs((prev) => prev.map((p) => (p.id === j.id ? updated : p)));
+          await persistJob(updated);
+        }
+      } catch (e) {
+        // skip this job's location on failure, continue with the rest
+      }
+      done += 1;
+    }
+    setBulkGeocoding(false);
+    setBulkGeocodeProgress("");
+  };
+
   const [techPhones, setTechPhones] = useState({});
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [techAccounts, setTechAccounts] = useState([]);
@@ -923,6 +987,14 @@ export default function InstallBoard() {
       </>
       )}
 
+      <CustomerMapSection
+        jobs={visibleJobs}
+        onSelectJob={setEditingJob}
+        onBulkGeocode={bulkGeocodeMissing}
+        bulkGeocoding={bulkGeocoding}
+        bulkGeocodeProgress={bulkGeocodeProgress}
+      />
+
       <div className="flex justify-end mt-4">
         {!confirmReset ? (
           <button onClick={() => setConfirmReset(true)} style={{ fontSize: 11, color: GRAY, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1098,9 +1170,24 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
     setDrawingStatus("");
   };
 
-  const handleSave = () => {
-    onSave({ ...form, photos, officeDrawings });
+  const [saveBusy, setSaveBusy] = useState(false);
+
+  const handleSave = async () => {
+    setSaveBusy(true);
+    let coords = { lat: form.lat ?? null, lng: form.lng ?? null };
+    const addressChanged = (form.address || "").trim() !== (job.address || "").trim();
+    if (form.address && form.address.trim() && (addressChanged || coords.lat == null || coords.lng == null)) {
+      try {
+        const geo = await geocodeAddress(form.address);
+        if (geo) coords = geo;
+      } catch (e) {
+        // Geocoding failed (e.g. API key not set up yet) — save without map coordinates.
+      }
+    }
+    onSave({ ...form, ...coords, photos, officeDrawings });
+    setSaveBusy(false);
   };
+
 
   return (
     <div
@@ -1380,8 +1467,12 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             <button onClick={onClose} style={{ fontSize: 13, color: INK, background: "#fff", border: `1px solid ${GRID_LINE}`, borderRadius: 5, padding: "8px 14px", cursor: "pointer" }}>
               취소
             </button>
-            <button onClick={handleSave} style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: "pointer" }}>
-              저장
+            <button
+              onClick={handleSave}
+              disabled={saveBusy}
+              style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: saveBusy ? GRAY : ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: saveBusy ? "not-allowed" : "pointer" }}
+            >
+              {saveBusy ? "저장 중…" : "저장"}
             </button>
           </div>
         </div>
@@ -1513,6 +1604,88 @@ function PhoneBookModal({ technicians, phones, onClose, onSave }) {
             {saving ? "저장 중…" : "저장"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, bulkGeocodeProgress }) {
+  const mapDivRef = useRef(null);
+  const mapObjRef = useRef(null);
+  const [mapError, setMapError] = useState("");
+
+  const geocodedCount = jobs.filter((j) => j.lat != null && j.lng != null).length;
+  const missingCount = jobs.filter((j) => j.address && j.address.trim() && (j.lat == null || j.lng == null)).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    loadKakaoMaps()
+      .then((maps) => {
+        if (cancelled || !mapDivRef.current) return;
+        if (!mapObjRef.current) {
+          mapObjRef.current = new maps.Map(mapDivRef.current, {
+            center: new maps.LatLng(36.5, 127.8),
+            level: 12,
+          });
+        }
+        const map = mapObjRef.current;
+        // Clear previous markers by re-creating the map's overlay layer is heavy-handed;
+        // instead we just track and remove markers we created ourselves.
+        if (map.__markers) map.__markers.forEach((m) => m.setMap(null));
+        map.__markers = [];
+
+        const geocoded = jobs.filter((j) => j.lat != null && j.lng != null);
+        if (geocoded.length > 0) {
+          const bounds = new maps.LatLngBounds();
+          geocoded.forEach((j) => {
+            const pos = new maps.LatLng(j.lat, j.lng);
+            bounds.extend(pos);
+            const marker = new maps.Marker({ position: pos, map });
+            map.__markers.push(marker);
+            const infoWindow = new maps.InfoWindow({
+              content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;"><b>${(j.siteName || "고객명미정").replace(/</g, "&lt;")}</b><br/>${(j.address || "").replace(/</g, "&lt;")}</div>`,
+            });
+            maps.event.addListener(marker, "mouseover", () => infoWindow.open(map, marker));
+            maps.event.addListener(marker, "mouseout", () => infoWindow.close());
+            maps.event.addListener(marker, "click", () => {
+              if (onSelectJob) onSelectJob(j);
+            });
+          });
+          map.setBounds(bounds);
+        }
+        setMapError("");
+      })
+      .catch((e) => setMapError(e.message || "지도를 불러오지 못했습니다."));
+    return () => {
+      cancelled = true;
+    };
+  }, [jobs, onSelectJob]);
+
+  return (
+    <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginTop: 14 }}>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
+          🗺️ 고객 위치 지도 ({geocodedCount}건 표시)
+        </div>
+        {missingCount > 0 && (
+          <button
+            onClick={onBulkGeocode}
+            disabled={bulkGeocoding}
+            style={{ fontSize: 12, fontWeight: 700, color: bulkGeocoding ? GRAY : NAVY_LIGHT, background: "#fff", border: `1px solid ${bulkGeocoding ? GRAY : NAVY_LIGHT}`, borderRadius: 5, padding: "6px 10px", cursor: bulkGeocoding ? "not-allowed" : "pointer" }}
+          >
+            {bulkGeocoding ? bulkGeocodeProgress || "처리 중…" : `위치 없는 주소 ${missingCount}건 일괄 반영`}
+          </button>
+        )}
+      </div>
+
+      {mapError && (
+        <div style={{ fontSize: 12, color: "#791F1F", marginBottom: 8 }}>{mapError}</div>
+      )}
+
+      <div ref={mapDivRef} style={{ width: "100%", height: 360, borderRadius: 6, background: "#E3E9EF" }} />
+
+      <div style={{ fontSize: 11.5, color: GRAY, marginTop: 8 }}>
+        마커를 클릭하면 해당 주문 상세가 열려요. 새 주문은 주소를 입력하고 저장하면 자동으로 지도에 반영돼요.
       </div>
     </div>
   );
