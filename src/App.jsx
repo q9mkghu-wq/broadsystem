@@ -1636,6 +1636,12 @@ function PhoneBookModal({ technicians, phones, onClose, onSave }) {
   );
 }
 
+const MAP_MARKER_COLOR = {
+  "대기중": "#8B8478",
+  "제작완료": "#2E7D32",
+  "상차완료": "#E0631E",
+};
+
 function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, bulkGeocodeProgress }) {
   const mapDivRef = useRef(null);
   const mapObjRef = useRef(null);
@@ -1668,14 +1674,20 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
           geocoded.forEach((j) => {
             const pos = new maps.LatLng(j.lat, j.lng);
             bounds.extend(pos);
-            const marker = new maps.Marker({ position: pos, map });
-            map.__markers.push(marker);
+
+            const color = MAP_MARKER_COLOR[j.productionStatus] || MAP_MARKER_COLOR["대기중"];
+            const dotEl = document.createElement("div");
+            dotEl.style.cssText = `width:16px; height:16px; border-radius:50%; background:${color}; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4); cursor:pointer;`;
+            const overlay = new maps.CustomOverlay({ position: pos, content: dotEl, yAnchor: 0.5, xAnchor: 0.5 });
+            overlay.setMap(map);
+            map.__markers.push(overlay);
+
             const infoWindow = new maps.InfoWindow({
-              content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;"><b>${(j.siteName || "고객명미정").replace(/</g, "&lt;")}</b><br/>${(j.address || "").replace(/</g, "&lt;")}</div>`,
+              content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;"><b>${(j.siteName || "고객명미정").replace(/</g, "&lt;")}</b><br/>${(j.address || "").replace(/</g, "&lt;")}<br/><span style="color:${color}; font-weight:700;">${j.productionStatus}</span></div>`,
             });
-            maps.event.addListener(marker, "mouseover", () => infoWindow.open(map, marker));
-            maps.event.addListener(marker, "mouseout", () => infoWindow.close());
-            maps.event.addListener(marker, "click", () => {
+            dotEl.addEventListener("mouseenter", () => infoWindow.open(map, overlay));
+            dotEl.addEventListener("mouseleave", () => infoWindow.close());
+            dotEl.addEventListener("click", () => {
               if (onSelectJob) onSelectJob(j);
             });
           });
@@ -1711,6 +1723,15 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
       )}
 
       <div ref={mapDivRef} style={{ width: "100%", height: 1600, borderRadius: 6, background: "#E3E9EF" }} />
+
+      <div className="flex flex-wrap gap-3 mt-2" style={{ fontSize: 11.5, color: GRAY }}>
+        {Object.entries(MAP_MARKER_COLOR).map(([status, color]) => (
+          <span key={status} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: color }} />
+            {status}
+          </span>
+        ))}
+      </div>
 
       <div style={{ fontSize: 11.5, color: GRAY, marginTop: 8 }}>
         마커를 클릭하면 해당 주문 상세가 열려요. 새 주문은 주소를 입력하고 저장하면 자동으로 지도에 반영돼요.
