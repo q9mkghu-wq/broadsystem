@@ -1678,7 +1678,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
             const color = MAP_MARKER_COLOR[j.productionStatus] || MAP_MARKER_COLOR["대기중"];
             const dotEl = document.createElement("div");
             dotEl.style.cssText = `width:32px; height:32px; border-radius:50%; background:${color}; border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.45); cursor:pointer;`;
-            const overlay = new maps.CustomOverlay({ position: pos, content: dotEl, yAnchor: 0.5, xAnchor: 0.5 });
+            const overlay = new maps.CustomOverlay({ position: pos, content: dotEl, yAnchor: 0.5, xAnchor: 0.5, clickable: true });
             overlay.setMap(map);
             map.__markers.push(overlay);
 
