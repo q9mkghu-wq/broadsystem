@@ -1683,9 +1683,10 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
             map.__markers.push(overlay);
 
             const infoWindow = new maps.InfoWindow({
+              position: pos,
               content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;"><b>${(j.siteName || "고객명미정").replace(/</g, "&lt;")}</b><br/>${(j.address || "").replace(/</g, "&lt;")}<br/><span style="color:${color}; font-weight:700;">${j.productionStatus}</span></div>`,
             });
-            dotEl.addEventListener("mouseenter", () => infoWindow.open(map, overlay));
+            dotEl.addEventListener("mouseenter", () => infoWindow.open(map));
             dotEl.addEventListener("mouseleave", () => infoWindow.close());
             dotEl.addEventListener("click", () => {
               if (onSelectJob) onSelectJob(j);
