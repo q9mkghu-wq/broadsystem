@@ -1051,6 +1051,19 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
   const fileInputRef = useRef(null);
   const drawingInputRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const openAddressSearch = () => {
+    if (!window.daum || !window.daum.Postcode) {
+      alert("주소 검색 기능을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        const base = data.roadAddress || data.jibunAddress || data.address || "";
+        const extra = data.buildingName && data.apartment === "Y" ? ` (${data.buildingName})` : "";
+        setForm((f) => ({ ...f, address: base + extra }));
+      },
+    }).open();
+  };
   const MAX_JOB_PHOTOS = 10;
   const MAX_JOB_DRAWINGS = 10;
   const surveyAppUrl = `https://q9mkghu-wq.github.io/hanger-survey/?jobId=${encodeURIComponent(job.id)}&name=${encodeURIComponent(job.siteName || "")}`;
@@ -1231,7 +1244,21 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           <input style={inputStyle} value={form.siteName} onChange={set("siteName")} placeholder="예: 김민수 고객님 안방" />
         </Field>
         <Field label="주소" icon={<MapPin size={12} />}>
-          <input style={inputStyle} value={form.address} onChange={set("address")} placeholder="주소 입력" />
+          <div className="flex gap-2">
+            <input
+              style={{ ...inputStyle, flex: 1, width: "auto" }}
+              value={form.address}
+              onChange={set("address")}
+              placeholder="주소 검색 버튼을 눌러주세요"
+            />
+            <button
+              type="button"
+              onClick={openAddressSearch}
+              style={{ fontSize: 12, fontWeight: 700, color: NAVY_LIGHT, background: "#fff", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 6, padding: "0 12px", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              🔍 주소 검색
+            </button>
+          </div>
         </Field>
         <Field label="주문 접수일" icon={<CalendarIcon size={12} />}>
           <input type="date" style={inputStyle} value={form.orderDate} onChange={set("orderDate")} />
