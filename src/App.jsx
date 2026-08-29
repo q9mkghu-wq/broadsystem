@@ -1709,7 +1709,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
         <div style={{ fontSize: 12, color: "#791F1F", marginBottom: 8 }}>{mapError}</div>
       )}
 
-      <div ref={mapDivRef} style={{ width: "100%", height: 640, borderRadius: 6, background: "#E3E9EF" }} />
+      <div ref={mapDivRef} style={{ width: "100%", height: 1600, borderRadius: 6, background: "#E3E9EF" }} />
 
       <div style={{ fontSize: 11.5, color: GRAY, marginTop: 8 }}>
         마커를 클릭하면 해당 주문 상세가 열려요. 새 주문은 주소를 입력하고 저장하면 자동으로 지도에 반영돼요.
