@@ -254,7 +254,7 @@ export default function InstallBoard() {
   const [bulkGeocodeProgress, setBulkGeocodeProgress] = useState("");
 
   const bulkGeocodeMissing = async () => {
-    const missing = visibleJobs.filter((j) => j.address && j.address.trim() && (j.lat == null || j.lng == null));
+    const missing = visibleJobs.filter((j) => j.productionStatus !== "설치완료" && j.address && j.address.trim() && (j.lat == null || j.lng == null));
     if (missing.length === 0) return;
     setBulkGeocoding(true);
     let done = 0;
@@ -1641,8 +1641,9 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
   const mapObjRef = useRef(null);
   const [mapError, setMapError] = useState("");
 
-  const geocodedCount = jobs.filter((j) => j.lat != null && j.lng != null).length;
-  const missingCount = jobs.filter((j) => j.address && j.address.trim() && (j.lat == null || j.lng == null)).length;
+  const mapJobs = useMemo(() => jobs.filter((j) => j.productionStatus !== "설치완료"), [jobs]);
+  const geocodedCount = mapJobs.filter((j) => j.lat != null && j.lng != null).length;
+  const missingCount = mapJobs.filter((j) => j.address && j.address.trim() && (j.lat == null || j.lng == null)).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -1661,7 +1662,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
         if (map.__markers) map.__markers.forEach((m) => m.setMap(null));
         map.__markers = [];
 
-        const geocoded = jobs.filter((j) => j.lat != null && j.lng != null);
+        const geocoded = mapJobs.filter((j) => j.lat != null && j.lng != null);
         if (geocoded.length > 0) {
           const bounds = new maps.LatLngBounds();
           geocoded.forEach((j) => {
@@ -1686,7 +1687,7 @@ function CustomerMapSection({ jobs, onSelectJob, onBulkGeocode, bulkGeocoding, b
     return () => {
       cancelled = true;
     };
-  }, [jobs, onSelectJob]);
+  }, [mapJobs, onSelectJob]);
 
   return (
     <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginTop: 14 }}>
