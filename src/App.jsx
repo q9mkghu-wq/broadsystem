@@ -1051,6 +1051,7 @@ export default function InstallBoard() {
           onSave={saveJob}
           onDelete={jobs.some((j) => j.id === editingJob.id) ? () => deleteJob(editingJob.id) : null}
           technicians={registeredTechNames}
+          lockTechAssignment={isTech}
         />
       )}
 
@@ -1068,7 +1069,7 @@ export default function InstallBoard() {
   );
 }
 
-function JobModal({ job, onClose, onSave, onDelete, technicians }) {
+function JobModal({ job, onClose, onSave, onDelete, technicians, lockTechAssignment }) {
   const [form, setForm] = useState(job);
   const [photos, setPhotos] = useState(job.photos || []);
   const [photoStatus, setPhotoStatus] = useState("");
@@ -1270,6 +1271,12 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
           </button>
         </div>
 
+        {lockTechAssignment && (
+          <div style={{ fontSize: 11.5, color: "#B15A16", background: "#FCEEDF", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
+            담당자 변경은 사무실 계정에서만 가능해요.
+          </div>
+        )}
+
         <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "10px 0 6px" }}>기본 정보</div>
         <Field label="현장/고객명" icon={<User size={12} />}>
           <input style={inputStyle} value={form.siteName} onChange={set("siteName")} placeholder="예: 김민수 고객님 안방" />
@@ -1301,7 +1308,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             <input type="date" style={inputStyle} value={form.measureDate} onChange={set("measureDate")} />
           </Field>
           <Field label="실측한 사람" icon={<User size={12} />}>
-            <select style={inputStyle} value={form.measureTech} onChange={set("measureTech")}>
+            <select style={{ ...inputStyle, background: lockTechAssignment ? "#EDE9DD" : inputStyle.background, cursor: lockTechAssignment ? "not-allowed" : "auto" }} value={form.measureTech} onChange={set("measureTech")} disabled={lockTechAssignment}>
               <option value="">선택 안 함</option>
               <option value="고객">고객</option>
               {technicians.map((t) => (
@@ -1498,7 +1505,7 @@ function JobModal({ job, onClose, onSave, onDelete, technicians }) {
             <input type="date" style={inputStyle} value={form.installDate} onChange={set("installDate")} />
           </Field>
           <Field label="설치 담당기사" icon={<Truck size={12} />}>
-            <select style={inputStyle} value={form.installTech} onChange={set("installTech")}>
+            <select style={{ ...inputStyle, background: lockTechAssignment ? "#EDE9DD" : inputStyle.background, cursor: lockTechAssignment ? "not-allowed" : "auto" }} value={form.installTech} onChange={set("installTech")} disabled={lockTechAssignment}>
               <option value="">선택 안 함</option>
               {technicians.map((t) => (
                 <option key={t} value={t}>{t}</option>
