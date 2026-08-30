@@ -280,15 +280,18 @@ export default function InstallBoard() {
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [techAccounts, setTechAccounts] = useState([]);
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null); // { username, name, role } from Firestore users/{uid}
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [createAccountOpen, setCreateAccountOpen] = useState(false);
+  const [accountManageOpen, setAccountManageOpen] = useState(false);
+
+  const isTech = userProfile?.role === "기사";
 
   // Phone back-button closes one overlay at a time, in the order they were opened.
   useBackableLayer(!!editingJob, () => setEditingJob(null));
   useBackableLayer(phoneModalOpen, () => setPhoneModalOpen(false));
-  useBackableLayer(createAccountOpen, () => setCreateAccountOpen(false));
+  useBackableLayer(accountManageOpen, () => setAccountManageOpen(false));
 
   // Safety buffer: push one base entry when the app first mounts, so opening the very
   // first modal never sits directly on the true edge of the browser history — this
@@ -305,6 +308,21 @@ export default function InstallBoard() {
     });
     return () => unsub();
   }, []);
+
+  // Load the logged-in person's profile (name/role) so we know whether to restrict
+  // the board to their own jobs (기사) or show everything (사무실).
+  useEffect(() => {
+    if (!user) {
+      setUserProfile(null);
+      return;
+    }
+    const unsub = onSnapshot(
+      doc(db, "users", user.uid),
+      (snap) => setUserProfile(snap.exists() ? snap.data() : null),
+      () => setUserProfile(null)
+    );
+    return () => unsub();
+  }, [user]);
 
   const handleLogin = async (username, password) => {
     setLoginLoading(true);
@@ -464,10 +482,15 @@ export default function InstallBoard() {
     return Array.from(new Set(techAccounts.map((a) => a.name).filter(Boolean))).sort();
   }, [techAccounts]);
 
+  const scopedJobs = useMemo(() => {
+    if (!isTech || !userProfile?.name) return jobs;
+    return jobs.filter((j) => j.measureTech === userProfile.name || j.installTech === userProfile.name);
+  }, [jobs, isTech, userProfile]);
+
   const visibleJobs = useMemo(() => {
-    if (techFilter === "전체") return jobs;
-    return jobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
-  }, [jobs, techFilter]);
+    if (techFilter === "전체") return scopedJobs;
+    return scopedJobs.filter((j) => j.measureTech === techFilter || j.installTech === techFilter);
+  }, [scopedJobs, techFilter]);
 
   const pendingJobs = useMemo(() => {
     return visibleJobs
@@ -536,11 +559,11 @@ export default function InstallBoard() {
 
   const todaySummary = useMemo(() => {
     const tk = todayKey();
-    const measureToday = jobs.filter((j) => j.measureDate === tk).length;
-    const installToday = jobs.filter((j) => j.installDate === tk).length;
-    const waitingProd = jobs.filter((j) => j.productionStatus !== "제작완료" && j.productionStatus !== "상차완료" && j.productionStatus !== "설치완료" && j.measureDate).length;
+    const measureToday = scopedJobs.filter((j) => j.measureDate === tk).length;
+    const installToday = scopedJobs.filter((j) => j.installDate === tk).length;
+    const waitingProd = scopedJobs.filter((j) => j.productionStatus !== "제작완료" && j.productionStatus !== "상차완료" && j.productionStatus !== "설치완료" && j.measureDate).length;
     return { measureToday, installToday, waitingProd };
-  }, [jobs]);
+  }, [scopedJobs]);
 
   if (authLoading) {
     return (
@@ -589,18 +612,21 @@ export default function InstallBoard() {
           </div>
           <div className="flex items-center gap-2">
             {saving && <span style={{ fontSize: 12, color: GRAY }}>저장 중…</span>}
-            <button
-              onClick={() => setCreateAccountOpen(true)}
-              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: NAVY_LIGHT, background: "#fff", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 6, padding: "8px 10px", cursor: "pointer" }}
-            >
-              <UserPlus size={14} /> 계정 만들기
-            </button>
+            {!isTech && (
+              <button
+                onClick={() => setAccountManageOpen(true)}
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: NAVY_LIGHT, background: "#fff", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 6, padding: "8px 10px", cursor: "pointer" }}
+              >
+                <UserPlus size={14} /> 계정 관리
+              </button>
+            )}
             <button
               onClick={handleLogout}
               style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: GRAY, background: "#fff", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "8px 10px", cursor: "pointer" }}
             >
               <LogOut size={14} /> 로그아웃
             </button>
+            {!isTech && (
             <button
               onClick={() => !error && setEditingJob(emptyJob(selectedDate))}
               disabled={!!error}
@@ -620,6 +646,7 @@ export default function InstallBoard() {
             >
               <Plus size={16} /> 새 주문 등록
             </button>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
@@ -647,7 +674,8 @@ export default function InstallBoard() {
         </div>
       )}
 
-      {/* Filter row */}
+      {/* Filter row (office only — technicians only ever see their own jobs) */}
+      {!isTech && (
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span style={{ fontSize: 12, color: GRAY, fontWeight: 700 }}>담당기사</span>
         <button
@@ -699,6 +727,7 @@ export default function InstallBoard() {
           <Phone size={12} /> 연락처 관리
         </button>
       </div>
+      )}
 
       {/* View tabs */}
       <div className="flex gap-2 mb-3">
@@ -995,6 +1024,7 @@ export default function InstallBoard() {
         bulkGeocodeProgress={bulkGeocodeProgress}
       />
 
+      {!isTech && (
       <div className="flex justify-end mt-4">
         {!confirmReset ? (
           <button onClick={() => setConfirmReset(true)} style={{ fontSize: 11, color: GRAY, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1008,6 +1038,7 @@ export default function InstallBoard() {
           </div>
         )}
       </div>
+      )}
 
       {!loaded && (
         <div style={{ textAlign: "center", fontSize: 13, color: GRAY, padding: 20 }}>불러오는 중…</div>
@@ -1032,7 +1063,7 @@ export default function InstallBoard() {
         />
       )}
 
-      {createAccountOpen && <CreateAccountModal onClose={() => setCreateAccountOpen(false)} />}
+      {accountManageOpen && <AccountManageModal onClose={() => setAccountManageOpen(false)} />}
     </div>
   );
 }
@@ -1815,34 +1846,108 @@ function LoginScreen({ onLogin, error, loading }) {
   );
 }
 
-function CreateAccountModal({ onClose }) {
-  const [form, setForm] = useState({ username: "", password: "", name: "", role: "기사" });
+function AccountManageModal({ onClose }) {
+  const [accounts, setAccounts] = useState(null); // null = loading
   const [adminPassword, setAdminPassword] = useState("");
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const [listError, setListError] = useState("");
 
-  const submit = async () => {
-    if (!form.username.trim() || !form.password) {
-      setStatus("아이디와 비밀번호를 입력해 주세요.");
+  const [newForm, setNewForm] = useState({ username: "", password: "", name: "", role: "기사" });
+  const [createStatus, setCreateStatus] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
+  const setNew = (k) => (e) => setNewForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const [resetTargetUid, setResetTargetUid] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [rowStatus, setRowStatus] = useState({}); // uid -> status message
+  const [rowBusy, setRowBusy] = useState({}); // uid -> bool
+  const [confirmDeleteUid, setConfirmDeleteUid] = useState(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "users"),
+      (snap) => setAccounts(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => setListError("계정 목록을 불러오지 못했습니다.")
+    );
+    return () => unsub();
+  }, []);
+
+  const createAccount = async () => {
+    if (!newForm.username.trim() || !newForm.password) {
+      setCreateStatus("아이디와 비밀번호를 입력해 주세요.");
       return;
     }
-    setBusy(true);
-    setStatus("");
+    if (!adminPassword) {
+      setCreateStatus("위쪽에 관리자 비밀번호를 먼저 입력해 주세요.");
+      return;
+    }
+    setCreateBusy(true);
+    setCreateStatus("");
     try {
       const res = await fetch("/api/create-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, adminPassword }),
+        body: JSON.stringify({ ...newForm, adminPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "계정 생성에 실패했습니다.");
-      setStatus(`"${form.username}" 계정이 생성되었습니다.`);
-      setForm({ username: "", password: "", name: "", role: "기사" });
+      setCreateStatus(`"${newForm.username}" 계정이 생성되었습니다.`);
+      setNewForm({ username: "", password: "", name: "", role: "기사" });
     } catch (e) {
-      setStatus(e.message);
+      setCreateStatus(e.message);
     } finally {
-      setBusy(false);
+      setCreateBusy(false);
+    }
+  };
+
+  const submitResetPassword = async (uid) => {
+    if (!adminPassword) {
+      setRowStatus((s) => ({ ...s, [uid]: "위쪽에 관리자 비밀번호를 먼저 입력해 주세요." }));
+      return;
+    }
+    if (!resetPasswordValue || resetPasswordValue.length < 6) {
+      setRowStatus((s) => ({ ...s, [uid]: "새 비밀번호는 6자 이상이어야 합니다." }));
+      return;
+    }
+    setRowBusy((b) => ({ ...b, [uid]: true }));
+    setRowStatus((s) => ({ ...s, [uid]: "" }));
+    try {
+      const res = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, newPassword: resetPasswordValue, adminPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "비밀번호 재설정에 실패했습니다.");
+      setRowStatus((s) => ({ ...s, [uid]: "비밀번호가 재설정되었습니다." }));
+      setResetTargetUid(null);
+      setResetPasswordValue("");
+    } catch (e) {
+      setRowStatus((s) => ({ ...s, [uid]: e.message }));
+    } finally {
+      setRowBusy((b) => ({ ...b, [uid]: false }));
+    }
+  };
+
+  const deleteAccount = async (uid) => {
+    if (!adminPassword) {
+      setRowStatus((s) => ({ ...s, [uid]: "위쪽에 관리자 비밀번호를 먼저 입력해 주세요." }));
+      return;
+    }
+    setRowBusy((b) => ({ ...b, [uid]: true }));
+    setRowStatus((s) => ({ ...s, [uid]: "" }));
+    try {
+      const res = await fetch("/api/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, adminPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "삭제에 실패했습니다.");
+      setConfirmDeleteUid(null);
+    } catch (e) {
+      setRowStatus((s) => ({ ...s, [uid]: e.message }));
+    } finally {
+      setRowBusy((b) => ({ ...b, [uid]: false }));
     }
   };
 
@@ -1869,26 +1974,120 @@ function CreateAccountModal({ onClose }) {
           border: `2px solid ${NAVY}`,
           borderRadius: 6,
           width: "100%",
-          maxWidth: 420,
+          maxWidth: 480,
           padding: 16,
           boxSizing: "border-box",
         }}
       >
         <div className="flex items-center justify-between mb-3">
-          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>새 계정 만들기</div>
+          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>계정 관리</div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: GRAY }}>
             <X size={18} />
           </button>
         </div>
 
+        <Field label="관리자 비밀번호" icon={<User size={12} />}>
+          <input
+            type="password"
+            style={inputStyle}
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            placeholder="계정 생성/재설정/삭제 전 한 번만 입력하면 돼요"
+          />
+        </Field>
+
+        <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>
+          계정 목록 {accounts && `(${accounts.length}개)`}
+        </div>
+
+        {accounts === null && !listError && (
+          <div style={{ fontSize: 12, color: GRAY, padding: "8px 0" }}>불러오는 중…</div>
+        )}
+        {listError && <div style={{ fontSize: 12, color: "#791F1F" }}>{listError}</div>}
+        {accounts && accounts.length === 0 && (
+          <div style={{ fontSize: 12, color: GRAY, padding: "8px 0" }}>등록된 계정이 없습니다.</div>
+        )}
+
+        <div className="flex flex-col gap-2" style={{ marginBottom: 14 }}>
+          {accounts && accounts.map((acc) => (
+            <div key={acc.id} style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: INK }}>{acc.name || acc.username}</span>
+                  <span style={{ fontSize: 11, color: GRAY, marginLeft: 6 }}>@{acc.username}</span>
+                  <span
+                    style={{
+                      fontSize: 10, fontWeight: 700, marginLeft: 6, padding: "1px 6px", borderRadius: 4,
+                      background: acc.role === "사무실" ? "#E6F1FB" : "#EDE9DD",
+                      color: acc.role === "사무실" ? "#0C447C" : GRAY,
+                    }}
+                  >
+                    {acc.role || "기사"}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setResetTargetUid(resetTargetUid === acc.id ? null : acc.id); setResetPasswordValue(""); }}
+                    style={{ fontSize: 11, color: NAVY_LIGHT, background: "#fff", border: `1px solid ${NAVY_LIGHT}`, borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}
+                  >
+                    비밀번호 재설정
+                  </button>
+                  {confirmDeleteUid === acc.id ? (
+                    <button
+                      onClick={() => deleteAccount(acc.id)}
+                      disabled={rowBusy[acc.id]}
+                      style={{ fontSize: 11, color: "#fff", background: "#A32D2D", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}
+                    >
+                      정말 삭제
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteUid(acc.id)}
+                      style={{ fontSize: 11, color: "#A32D2D", background: "#fff", border: "1px solid #F09595", borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}
+                    >
+                      삭제
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {resetTargetUid === acc.id && (
+                <div className="flex gap-2 mt-2">
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    type="text"
+                    value={resetPasswordValue}
+                    onChange={(e) => setResetPasswordValue(e.target.value)}
+                    placeholder="새 비밀번호 (6자 이상)"
+                  />
+                  <button
+                    onClick={() => submitResetPassword(acc.id)}
+                    disabled={rowBusy[acc.id]}
+                    style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "0 12px", cursor: "pointer" }}
+                  >
+                    적용
+                  </button>
+                </div>
+              )}
+              {rowStatus[acc.id] && (
+                <div style={{ fontSize: 11, color: rowStatus[acc.id].includes("재설정되었습니다") ? GREEN : "#791F1F", marginTop: 4 }}>
+                  {rowStatus[acc.id]}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 800, color: NAVY_LIGHT, letterSpacing: "0.08em", margin: "14px 0 6px" }}>새 계정 추가</div>
+
         <Field label="이름" icon={<User size={12} />}>
-          <input style={inputStyle} value={form.name} onChange={set("name")} placeholder="예: 윤형진" />
+          <input style={inputStyle} value={newForm.name} onChange={setNew("name")} placeholder="예: 윤형진" />
         </Field>
         <Field label="아이디" icon={<User size={12} />}>
-          <input style={inputStyle} value={form.username} onChange={set("username")} placeholder="영문/숫자 (예: yhj01)" autoCapitalize="off" />
+          <input style={inputStyle} value={newForm.username} onChange={setNew("username")} placeholder="영문/숫자 (예: yhj01)" autoCapitalize="off" />
         </Field>
         <Field label="초기 비밀번호" icon={<User size={12} />}>
-          <input style={inputStyle} value={form.password} onChange={set("password")} placeholder="6자 이상" />
+          <input style={inputStyle} value={newForm.password} onChange={setNew("password")} placeholder="6자 이상" />
         </Field>
         <Field label="구분" icon={<User size={12} />}>
           <div className="flex gap-2">
@@ -1896,16 +2095,16 @@ function CreateAccountModal({ onClose }) {
               <button
                 key={r}
                 type="button"
-                onClick={() => setForm((f) => ({ ...f, role: r }))}
+                onClick={() => setNewForm((f) => ({ ...f, role: r }))}
                 style={{
                   flex: 1,
                   fontSize: 12,
                   fontWeight: 700,
                   padding: "7px 0",
                   borderRadius: 5,
-                  border: `1px solid ${form.role === r ? NAVY : GRID_LINE}`,
-                  background: form.role === r ? NAVY : "#fff",
-                  color: form.role === r ? "#fff" : INK,
+                  border: `1px solid ${newForm.role === r ? NAVY : GRID_LINE}`,
+                  background: newForm.role === r ? NAVY : "#fff",
+                  color: newForm.role === r ? "#fff" : INK,
                   cursor: "pointer",
                 }}
               >
@@ -1914,19 +2113,16 @@ function CreateAccountModal({ onClose }) {
             ))}
           </div>
         </Field>
-        <Field label="관리자 비밀번호" icon={<User size={12} />}>
-          <input type="password" style={inputStyle} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="새 계정 발급 권한 확인용" />
-        </Field>
 
-        {status && <div style={{ fontSize: 12, color: status.includes("생성되었습니다") ? GREEN : "#791F1F", marginBottom: 8 }}>{status}</div>}
+        {createStatus && <div style={{ fontSize: 12, color: createStatus.includes("생성되었습니다") ? GREEN : "#791F1F", marginBottom: 8 }}>{createStatus}</div>}
 
         <div className="flex justify-end mt-2">
           <button
-            onClick={submit}
-            disabled={busy}
-            style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: busy ? "not-allowed" : "pointer" }}
+            onClick={createAccount}
+            disabled={createBusy}
+            style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "8px 16px", cursor: createBusy ? "not-allowed" : "pointer" }}
           >
-            {busy ? "생성 중…" : "계정 생성"}
+            {createBusy ? "생성 중…" : "계정 생성"}
           </button>
         </div>
       </div>
