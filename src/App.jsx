@@ -181,6 +181,34 @@ function geocodeAddress(address) {
   );
 }
 
+// ---------- Kakao Share (카카오톡 공유하기) ----------
+let kakaoShareInitDone = false;
+
+function ensureKakaoShareInit() {
+  if (kakaoShareInitDone) return true;
+  if (typeof window === "undefined" || !window.Kakao) return false;
+  if (!window.Kakao.isInitialized()) {
+    const key = import.meta.env.VITE_KAKAO_MAP_KEY;
+    if (!key) return false;
+    window.Kakao.init(key);
+  }
+  kakaoShareInitDone = true;
+  return true;
+}
+
+function shareToKakao(text) {
+  if (!ensureKakaoShareInit()) {
+    alert("카카오톡 공유 기능을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    return;
+  }
+  const appUrl = window.location.origin;
+  window.Kakao.Share.sendDefault({
+    objectType: "text",
+    text,
+    link: { mobileWebUrl: appUrl, webUrl: appUrl },
+  });
+}
+
 
 function CornerMarks() {
   const s = { position: "absolute", width: 7, height: 7, borderColor: GRID_LINE };
@@ -750,15 +778,24 @@ export default function InstallBoard() {
               <div key={a.id} style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }}>
                 <div className="flex items-start justify-between gap-2">
                   <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-wrap" }}>{a.text}</div>
-                  {!isTech && (
+                  <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
                     <button
-                      onClick={() => deleteAnnouncement(a.id)}
-                      style={{ background: "transparent", border: "none", color: GRAY, cursor: "pointer", flexShrink: 0, fontSize: 14, lineHeight: 1 }}
-                      title="삭제"
+                      onClick={() => shareToKakao(a.text)}
+                      style={{ background: "#FEE500", border: "none", borderRadius: 4, color: "#3C1E1E", cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "3px 8px", whiteSpace: "nowrap" }}
+                      title="카카오톡으로 공유"
                     >
-                      ✕
+                      💬 카톡 공유
                     </button>
-                  )}
+                    {!isTech && (
+                      <button
+                        onClick={() => deleteAnnouncement(a.id)}
+                        style={{ background: "transparent", border: "none", color: GRAY, cursor: "pointer", fontSize: 14, lineHeight: 1 }}
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ fontSize: 10.5, color: GRAY, marginTop: 4 }}>
                   {a.authorName || "사무실"} · {fmtDateTime(a.createdAt)}
