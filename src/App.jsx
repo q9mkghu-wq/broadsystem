@@ -283,6 +283,9 @@ export default function InstallBoard() {
   const [techFilter, setTechFilter] = useState("전체");
   const [viewMode, setViewMode] = useState("calendar");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [statsCursor, setStatsCursor] = useState(() => new Date());
+  const [statsMode, setStatsMode] = useState("month"); // 'month' | 'year'
+  const [statsTechFilter, setStatsTechFilter] = useState("전체");
   const [bulkGeocoding, setBulkGeocoding] = useState(false);
   const [bulkGeocodeProgress, setBulkGeocodeProgress] = useState("");
 
@@ -585,6 +588,38 @@ export default function InstallBoard() {
         return (a.orderDate || "").localeCompare(b.orderDate || "");
       });
   }, [visibleJobs]);
+
+  const statsPeriodPrefix = statsMode === "year"
+    ? `${statsCursor.getFullYear()}`
+    : `${statsCursor.getFullYear()}-${pad(statsCursor.getMonth() + 1)}`;
+
+  const statsPeriodLabel = statsMode === "year"
+    ? `${statsCursor.getFullYear()}년`
+    : `${statsCursor.getFullYear()}년 ${statsCursor.getMonth() + 1}월`;
+
+  const statsScopeName = isTech ? userProfile?.name : (statsTechFilter === "전체" ? null : statsTechFilter);
+
+  const statsJobs = useMemo(() => {
+    return jobs
+      .filter((j) => j.installDate && j.installDate.startsWith(statsPeriodPrefix))
+      .filter((j) => (statsScopeName ? j.installTech === statsScopeName : true))
+      .sort((a, b) => {
+        const aDone = a.productionStatus === "설치완료" ? 0 : 1;
+        const bDone = b.productionStatus === "설치완료" ? 0 : 1;
+        if (aDone !== bDone) return aDone - bDone;
+        return a.installDate.localeCompare(b.installDate);
+      });
+  }, [jobs, statsPeriodPrefix, statsScopeName]);
+
+  const statsDoneCount = statsJobs.filter((j) => j.productionStatus === "설치완료").length;
+  const statsNotDoneCount = statsJobs.length - statsDoneCount;
+
+  const shiftStatsPeriod = (delta) => {
+    setStatsCursor((c) => {
+      if (statsMode === "year") return new Date(c.getFullYear() + delta, c.getMonth(), 1);
+      return new Date(c.getFullYear(), c.getMonth() + delta, 1);
+    });
+  };
 
   // events per date: {orderDate, measureDate, installDate}
   const eventsByDate = useMemo(() => {
@@ -905,6 +940,21 @@ export default function InstallBoard() {
         >
           📋 설치일 미정 고객 {pendingJobs.length > 0 && `(${pendingJobs.length})`}
         </button>
+        <button
+          onClick={() => setViewMode("stats")}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            padding: "8px 14px",
+            borderRadius: 6,
+            border: `1px solid ${viewMode === "stats" ? "#0C447C" : GRID_LINE}`,
+            background: viewMode === "stats" ? "#0C447C" : "#fff",
+            color: viewMode === "stats" ? "#fff" : INK,
+            cursor: "pointer",
+          }}
+        >
+          📊 설치 통계
+        </button>
       </div>
 
       {viewMode === "pending" ? (
@@ -962,6 +1012,117 @@ export default function InstallBoard() {
               </div>
             ))}
           </div>
+        </div>
+      ) : viewMode === "stats" ? (
+        <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginBottom: 14 }}>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
+              📊 설치 통계 {isTech && userProfile?.name ? `— ${userProfile.name}` : ""}
+            </div>
+            <div className="flex gap-2">
+              {["month", "year"].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setStatsMode(m)}
+                  style={{
+                    fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                    border: `1px solid ${statsMode === m ? "#0C447C" : GRID_LINE}`,
+                    background: statsMode === m ? "#0C447C" : "#fff",
+                    color: statsMode === m ? "#fff" : INK, cursor: "pointer",
+                  }}
+                >
+                  {m === "month" ? "월별" : "연도별"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => shiftStatsPeriod(-1)} style={{ border: "none", background: "transparent", cursor: "pointer", color: NAVY }}>
+              <ChevronLeft size={20} />
+            </button>
+            <div style={{ fontWeight: 800, fontSize: 15, color: NAVY }}>{statsPeriodLabel}</div>
+            <button onClick={() => shiftStatsPeriod(1)} style={{ border: "none", background: "transparent", cursor: "pointer", color: NAVY }}>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          {!isTech && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span style={{ fontSize: 12, color: GRAY, fontWeight: 700 }}>기사</span>
+              <button
+                onClick={() => setStatsTechFilter("전체")}
+                style={{
+                  fontSize: 12, padding: "4px 10px", borderRadius: 999,
+                  border: `1px solid ${statsTechFilter === "전체" ? NAVY : GRID_LINE}`,
+                  background: statsTechFilter === "전체" ? NAVY : "#fff",
+                  color: statsTechFilter === "전체" ? "#fff" : INK, cursor: "pointer",
+                }}
+              >
+                전체
+              </button>
+              {technicians.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setStatsTechFilter(t)}
+                  style={{
+                    fontSize: 12, padding: "4px 10px", borderRadius: 999,
+                    border: `1px solid ${statsTechFilter === t ? NAVY : GRID_LINE}`,
+                    background: statsTechFilter === t ? NAVY : "#fff",
+                    color: statsTechFilter === t ? "#fff" : INK, cursor: "pointer",
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 mb-3">
+            <div style={{ fontSize: 12, background: "#E6F1FB", color: "#0C447C", border: "1px solid #85B7EB", borderRadius: 5, padding: "4px 10px" }}>
+              설치완료 <b>{statsDoneCount}</b>건
+            </div>
+            <div style={{ fontSize: 12, background: "#FDF4E3", color: "#B15A16", border: "1px solid #E8C79A", borderRadius: 5, padding: "4px 10px" }}>
+              미설치 <b>{statsNotDoneCount}</b>건
+            </div>
+          </div>
+
+          {statsJobs.length === 0 ? (
+            <div style={{ fontSize: 13, color: GRAY, padding: "16px 4px" }}>이 기간에 설치 건이 없습니다.</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {statsJobs.map((j) => {
+                const done = j.productionStatus === "설치완료";
+                return (
+                  <div
+                    key={j.id}
+                    onClick={() => setEditingJob(j)}
+                    style={{
+                      border: `1px solid ${done ? "#85B7EB" : "#E8C79A"}`,
+                      background: done ? "#E6F1FB" : "#FDF4E3",
+                      borderRadius: 6,
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div style={{ fontWeight: 700, fontSize: 14, color: INK }}>
+                        {j.siteName || "(현장명 미입력)"}
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: done ? "#0C447C" : "#B15A16" }}>
+                        {done ? "설치완료" : "미설치"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-1" style={{ fontSize: 12, color: GRAY }}>
+                      <span>{getRegion(j.address) || "지역미정"}</span>
+                      <span>설치일 {fmtDate(j.installDate)}</span>
+                      {!statsScopeName && j.installTech && <span>기사 {j.installTech}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : (
       <>
