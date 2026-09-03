@@ -718,7 +718,7 @@ export default function InstallBoard() {
 
       <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginBottom: 14 }}>
         <div style={{ fontWeight: 800, color: NAVY, fontSize: 14, marginBottom: 8 }}>
-          📢 전체 공지사항
+          📢 공지사항
         </div>
 
         {!isTech && (
