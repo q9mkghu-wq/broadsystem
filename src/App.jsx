@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Ruler, User, Factory, Truck, MapPin, StickyNote, Trash2, Calendar as CalendarIcon, RotateCcw, Phone, LogOut, UserPlus } from "lucide-react";
 import { db, auth, surveyDb } from "./firebase";
-import { doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, collection, query, where, writeBatch } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, deleteDoc, getDoc, getDocs, collection, query, where, orderBy, writeBatch } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 function toEmail(username) {
@@ -91,6 +91,11 @@ function fmtDate(key) {
   if (!key) return "";
   const [y, m, d] = key.split("-");
   return `${y}.${m}.${d}`;
+}
+function fmtDateTime(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function getRegion(address) {
   if (!address) return "";
@@ -288,6 +293,11 @@ export default function InstallBoard() {
 
   const isTech = userProfile?.role === "기사";
 
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementDraft, setAnnouncementDraft] = useState("");
+  const [announcementBusy, setAnnouncementBusy] = useState(false);
+  const [announcementError, setAnnouncementError] = useState("");
+
   // Phone back-button closes one overlay at a time, in the order they were opened.
   useBackableLayer(!!editingJob, () => setEditingJob(null));
   useBackableLayer(phoneModalOpen, () => setPhoneModalOpen(false));
@@ -390,6 +400,23 @@ export default function InstallBoard() {
 
   useEffect(() => {
     if (!user) {
+      setAnnouncements([]);
+      return;
+    }
+    const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setAnnouncements(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setAnnouncementError("");
+      },
+      () => setAnnouncementError("공지사항을 불러오지 못했습니다.")
+    );
+    return () => unsub();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
       setTechAccounts([]);
       return;
     }
@@ -466,6 +493,33 @@ export default function InstallBoard() {
       await setDoc(techDocRef, { phones: nextPhones, updatedAt: Date.now() });
     } catch (e) {
       setError("연락처 저장 중 오류가 발생했습니다.");
+    }
+  };
+
+  const postAnnouncement = async () => {
+    if (!announcementDraft.trim()) return;
+    setAnnouncementBusy(true);
+    setAnnouncementError("");
+    try {
+      const id = "ann_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      await setDoc(doc(db, "announcements", id), {
+        text: announcementDraft.trim(),
+        authorName: userProfile?.name || "사무실",
+        createdAt: Date.now(),
+      });
+      setAnnouncementDraft("");
+    } catch (e) {
+      setAnnouncementError("공지 등록 중 오류가 발생했습니다.");
+    } finally {
+      setAnnouncementBusy(false);
+    }
+  };
+
+  const deleteAnnouncement = async (id) => {
+    try {
+      await deleteDoc(doc(db, "announcements", id));
+    } catch (e) {
+      setAnnouncementError("삭제 중 오류가 발생했습니다.");
     }
   };
 
@@ -660,6 +714,59 @@ export default function InstallBoard() {
             제작 대기/진행 <b>{todaySummary.waitingProd}</b>건
           </div>
         </div>
+      </div>
+
+      <div style={{ background: "#FBF9F3", border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: NAVY, fontSize: 14, marginBottom: 8 }}>
+          📢 전체 공지사항
+        </div>
+
+        {!isTech && (
+          <div className="flex gap-2 mb-3">
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              value={announcementDraft}
+              onChange={(e) => setAnnouncementDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && postAnnouncement()}
+              placeholder="전체에게 알릴 내용을 입력하세요"
+            />
+            <button
+              onClick={postAnnouncement}
+              disabled={announcementBusy || !announcementDraft.trim()}
+              style={{ fontSize: 13, fontWeight: 700, color: "#fff", background: announcementBusy || !announcementDraft.trim() ? GRAY : ORANGE, border: "none", borderRadius: 6, padding: "0 16px", cursor: announcementBusy || !announcementDraft.trim() ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
+            >
+              등록
+            </button>
+          </div>
+        )}
+
+        {announcementError && <div style={{ fontSize: 12, color: "#791F1F", marginBottom: 8 }}>{announcementError}</div>}
+
+        {announcements.length === 0 ? (
+          <div style={{ fontSize: 12, color: GRAY, padding: "8px 0" }}>등록된 공지사항이 없습니다.</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {announcements.map((a) => (
+              <div key={a.id} style={{ border: `1px solid ${GRID_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }}>
+                <div className="flex items-start justify-between gap-2">
+                  <div style={{ fontSize: 13, color: INK, whiteSpace: "pre-wrap" }}>{a.text}</div>
+                  {!isTech && (
+                    <button
+                      onClick={() => deleteAnnouncement(a.id)}
+                      style={{ background: "transparent", border: "none", color: GRAY, cursor: "pointer", flexShrink: 0, fontSize: 14, lineHeight: 1 }}
+                      title="삭제"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div style={{ fontSize: 10.5, color: GRAY, marginTop: 4 }}>
+                  {a.authorName || "사무실"} · {fmtDateTime(a.createdAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (
