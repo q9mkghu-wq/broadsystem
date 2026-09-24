@@ -1010,6 +1010,14 @@ export default function InstallBoard() {
                   >
                     📐 실측 앱2 열기
                   </a>
+                  <a
+                    href="https://app-mu4w0ofr.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, fontWeight: 700, color: NAVY_LIGHT, border: `1px solid ${NAVY_LIGHT}`, borderRadius: 5, padding: "6px 10px", textDecoration: "none" }}
+                  >
+                    📸 포토 마크업
+                  </a>
                   <button
                     onClick={() => setEditingJob(j)}
                     style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: ORANGE, border: "none", borderRadius: 5, padding: "6px 10px", cursor: "pointer" }}
